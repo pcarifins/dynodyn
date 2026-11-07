@@ -1,0 +1,2080 @@
+# DYNODYN — COMPLETE MASTER BUILD PROMPT
+## Greenfield Development | Google AI Studio Build | Final Specification V1.0
+
+**Application Name:** DynoDyn  
+**Application Purpose:** Quality Gate, Performance Testing, AI Dispatch, JO Pipeline, SLA Monitoring & Automatic Test Certificate  
+**Development Type:** NEW APPLICATION — BUILD FROM SCRATCH  
+**Functional Baseline:** 60 confirmed workflow decisions  
+**Primary UI Reference:** https://dynodyn.ai.studio/  
+**Technical Reference:** https://github.com/pcarifins/aqualitypro
+
+---
+
+# 0. CRITICAL INSTRUCTIONS — READ FIRST
+
+You are an expert full-stack engineer, industrial quality management systems architect, Firebase specialist, UI reconstruction engineer, and manufacturing workflow developer.
+
+Your assignment is to **build a completely new, production-oriented DynoDyn application using Google AI Studio Build**.
+
+The user does not have the original DynoDyn source code or an existing Google AI Studio Build project to modify.
+
+The user has:
+
+1. A DynoDyn application URL.
+2. DynoDyn UI screenshots.
+3. A GitHub repository named AQualityPRO.
+4. Sixty confirmed workflow decisions.
+5. Component testing checksheet information and technical standards.
+
+You must reconstruct the application from these references.
+
+## THE MOST IMPORTANT RULE
+
+**RECREATE THE ORIGINAL DYNODYN UI AS ACCURATELY AS POSSIBLE. DO NOT REDESIGN IT.**
+
+The DynoDyn screenshots are the primary visual authority.
+
+The 60 confirmed workflow decisions are the primary functional authority.
+
+The AQualityPRO repository is a technical reference, not a replacement UI.
+
+### Strict visual preservation
+
+Do not:
+- Replace the screenshot-based design with a generic dashboard.
+- Invent a completely different visual identity.
+- Change the existing terminal-card concept.
+- Replace the workstation allocation board with an unrelated layout.
+- Introduce unnecessary navigation.
+- Add decorative graphics unrelated to the screenshots.
+- Copy the AQualityPRO interface into DynoDyn.
+- Claim pixel-perfect reconstruction when references are incomplete.
+
+You may:
+- Recreate existing components using reusable React components.
+- Implement functional interactions behind the reconstructed UI.
+- Add necessary fields, validations, and configuration controls.
+- Improve responsive behavior while preserving the desktop composition.
+- Use compact status indicators within the original visual structure.
+
+**Build from scratch. Preserve the reference design. Implement the complete workflow.**
+
+---
+
+# 1. REFERENCE ANALYSIS
+
+## Reference A — DynoDyn
+
+https://dynodyn.ai.studio/
+
+Use this URL as a reference for accessible visual behavior and navigation.
+
+Do not assume access to:
+- Original source code.
+- Private application APIs.
+- Production database.
+- Authentication credentials.
+- Hidden configuration.
+
+If the application is inaccessible or partially inaccessible, rely on the supplied screenshots.
+
+## Reference B — AQualityPRO
+
+https://github.com/pcarifins/aqualitypro
+
+Inspect the repository if source access is available.
+
+Study reusable approaches for:
+- React component organization.
+- Firebase integration.
+- Firestore transactions.
+- Realtime synchronization.
+- Idempotent operations.
+- Audit history.
+- Role-based authorization.
+- Backend validation.
+- Deployment configuration.
+
+Reuse appropriate patterns only after verifying their suitability.
+
+Do not blindly copy repository code.
+
+Do not copy its visual interface.
+
+## Reference C — Screenshots
+
+Analyze every supplied DynoDyn screenshot.
+
+Reconstruct:
+- Landing page.
+- Quality Gate terminal cards.
+- Supervisor dashboard.
+- GLT Engine page.
+- GLT Power Train page.
+- Engine Dyno terminal pages.
+- Cylinder Test Bench.
+- Power Train Test Bench.
+- Mobile Bench.
+- Quality Master.
+- Workstation allocation board.
+- JO Pipeline.
+- Fullscreen monitoring.
+- Checksheet forms.
+- MRI forms.
+- Test Certificate.
+
+If screenshots are not attached or accessible in the current Build session, clearly identify which screens cannot be visually verified. Do not claim that inaccessible screenshots have been analyzed.
+
+Do not block functional development unnecessarily, but distinguish verified visual details from reasonable implementation assumptions.
+
+---
+
+# 2. TECHNOLOGY STACK
+
+Use the Google AI Studio Build-supported application stack.
+
+Preferred frontend:
+- React
+- TypeScript
+- Reusable components
+- Existing project-supported styling solution
+- Responsive desktop-first layout
+
+Preferred backend:
+- Firebase Authentication
+- Cloud Firestore
+- Firebase Storage
+- Cloud Functions or trusted server endpoints
+- Firebase Security Rules
+
+Use realtime Firestore listeners for operational monitoring.
+
+Use server-authoritative timestamps.
+
+Use UTC for persistence and Asia/Makassar for operational display.
+
+Do not store authoritative workflow state only in browser memory or localStorage.
+
+Local storage may be used for recoverable drafts.
+
+Never embed Firebase Admin credentials, private service-account keys, or other server secrets in frontend code.
+
+---
+
+# 3. APPLICATION STRUCTURE
+
+Reconstruct the existing DynoDyn landing page with its terminal navigation.
+
+Maintain the original concept of 12 terminal access points.
+
+| Group | Terminal | Function |
+|---|---|---|
+| Governance | SPV QC | Supervisor |
+| Governance | QM | Quality Master |
+| GLT | GLT-E | GLT Engine |
+| GLT | GLT-PT | GLT Power Train |
+| Engine | D1 | Engine Dyno 1 |
+| Engine | D2 | Engine Dyno 2 |
+| Engine | D3 | Engine Dyno 3 |
+| Cylinder | TB Cyl | Cylinder Test Bench |
+| Power Train | TB1 | Dedicated PPM Test Bench |
+| Power Train | TB2 | Power Train Test Bench |
+| Power Train | TB3 | Power Train Test Bench |
+| Power Train | MB | Mobile Test Bench |
+
+Use the exact terminal labels visible in the supplied screenshots where they differ from these internal identifiers.
+
+The workstation allocation board contains eight Performance Test workstations:
+
+D1, D2, D3, TB Cyl, TB1, TB2, TB3, and MB.
+
+GLT terminals are inspection terminals, not Performance Test workstations.
+
+---
+
+# 4. USER ROLES AND AUTHORIZATION
+
+Implement four role categories.
+
+## 4.1 Supervisor QC
+
+Permissions:
+- View and manage the operational dashboard.
+- Approve, modify, and reject AI Dispatch recommendations.
+- Allocate and reallocate JO.
+- Manage workstation availability.
+- Configure SLA targets and working calendars.
+- Configure AI Dispatch weights.
+- Perform authorized corrections.
+- Abort Performance Test attempts.
+- Cancel eligible JO.
+- Reopen DONE/CANCELLED JO.
+- View operational analytics.
+- Export reports.
+
+## 4.2 Quality Master
+
+Permissions:
+- Create checksheet templates.
+- Configure parameter standards.
+- Configure Mandatory, Optional, and N/A rules.
+- Publish checksheet versions.
+- Configure required evidence.
+- Configure workstation compatibility.
+- Configure Fixed Standard Duration.
+- View quality analytics.
+
+## 4.3 GLT Operator
+
+Permissions:
+- Receive JO.
+- Edit receiving information before Start GLT.
+- Start GLT.
+- Complete GLT checksheet.
+- Submit GOOD/NOT GOOD.
+- Record MRI corrective action.
+- Start GLT Reinspection.
+- View relevant GLT records.
+
+## 4.4 Performance Test Operator
+
+Permissions:
+- View workstation-approved JO queue.
+- Select any approved JO in that queue.
+- Start Test.
+- Complete Performance Test checksheet.
+- Submit GOOD/NOT GOOD.
+- Record corrective action.
+- Start Retest.
+- View relevant testing history.
+
+## Terminal Identity Only
+
+Do not require individual operator name, employee ID, or personal login.
+
+Record operational actions using:
+- Terminal ID.
+- Role.
+- Server timestamp.
+- Action type.
+
+Supervisor and Quality Master require protected administrative sessions.
+
+Use secure backend authorization. A client-selected terminal ID is not sufficient proof of permission.
+
+For production, use server-verified terminal credentials or an equivalent trusted terminal authentication mechanism. This must not introduce mandatory personal operator identities.
+
+Do not deploy unrestricted Firestore rules.
+
+---
+
+# 5. JO RECEIVING WORKFLOW
+
+Only GLT Operators can create a new JO.
+
+Use the existing Receive New JO concept.
+
+Required input fields:
+
+1. JO Number.
+2. Component Category.
+3. Component Model.
+4. Unit Model.
+5. Assembler.
+6. Assembly Date.
+
+System-generated fields:
+- JO ID.
+- Received timestamp.
+- Receiving terminal.
+- Initial status.
+- Audit metadata.
+
+## Receive rules
+
+- All required fields must be completed.
+- JO Number must be unique.
+- Duplicate JO submissions must be rejected.
+- Use atomic and idempotent backend creation.
+- Record `receivedAt` using server time.
+- Initial JO status is `WAITING_GLT`.
+- `receivedAt` is immutable.
+
+GLT Operator may edit receiving fields before Start GLT.
+
+After Start GLT, only Supervisor may correct receiving information, with mandatory audit history.
+
+Do not reset receiving time when data is corrected.
+
+---
+
+# 6. END-TO-END JO PIPELINE
+
+Implement this conceptual workflow:
+
+```text
+RECEIVE NEW JO
+       |
+       v
+WAITING_GLT
+       |
+       v
+START GLT
+       |
+       v
+GLT CHECKSHEET
+       |
+       +---- NOT GOOD ----> MRI-A
+       |                       |
+       |                 CORRECTIVE ACTION
+       |                       |
+       |                 GLT REINSPECTION
+       |                       |
+       |                 FRESH CHECKSHEET
+       |                       |
+       +<----------------------+
+       |
+      GOOD
+       |
+       v
+READY_FOR_ALLOCATION
+       |
+       v
+AI DISPATCH RECOMMENDATION
+       |
+       v
+SUPERVISOR APPROVAL
+       |
+       v
+APPROVED WORKSTATION QUEUE
+       |
+       v
+START PERFORMANCE TEST
+       |
+       v
+PERFORMANCE CHECKSHEET
+       |
+       +---- NOT GOOD ----> MRI-B
+       |                       |
+       |                    ADJUSTMENT
+       |                       |
+       |                 CORRECTIVE ACTION
+       |                       |
+       |                      RETEST
+       |                       |
+       |                 FRESH CHECKSHEET
+       |                       |
+       +<----------------------+
+       |
+      GOOD
+       |
+       v
+DONE
+       |
+       v
+AUTOMATIC TEST CERTIFICATE
+```
+
+Supervisor-controlled Performance Abort and Transfer are separate paths.
+
+Do not confuse ABORTED with NOT GOOD.
+
+Do not create additional Administrative Hold or Termination statuses.
+
+Use canonical backend state transitions rather than relying on free-form status strings.
+
+---
+
+# 7. GLT INSPECTION
+
+## Start GLT
+
+Start GLT is manual.
+
+Record:
+- Attempt ID.
+- JO ID.
+- Terminal ID.
+- Start timestamp.
+- Published checksheet version.
+- Complete checksheet standard snapshot.
+
+Use server time.
+
+## GLT GOOD
+
+Allow GOOD Submit only when:
+- Every Mandatory parameter is complete.
+- All required evidence is present.
+- No parameter is NG.
+- Backend validation succeeds.
+
+After Submit:
+- Close the GLT attempt as GOOD.
+- Record server end timestamp.
+- Mark JO `READY_FOR_ALLOCATION`.
+
+## GLT NOT GOOD
+
+Allow NOT GOOD Submit only when:
+- Every Mandatory parameter is complete.
+- At least one parameter is NG.
+- Required NG descriptions/evidence are present.
+
+After Submit:
+- Close the attempt as NOT GOOD.
+- Generate MRI-A.
+- Include every NG parameter.
+- Preserve the attempt.
+- Block Performance Test allocation.
+
+## GLT Reinspection
+
+Before Start Reinspection:
+- One general corrective action remark per MRI-A is mandatory.
+- No Supervisor repair-completion approval is required.
+
+At Start Reinspection:
+- Create a new attempt.
+- Use a blank checksheet.
+- Load the latest published applicable checksheet version.
+- Do not copy previous measurements.
+- Preserve previous results as read-only.
+
+## No GLT Abort
+
+GLT Abort must not exist.
+
+Do not introduce automatic GLT NG, timeout, Pause, or Resume.
+
+Browser closure does not terminate an active GLT attempt.
+
+---
+
+# 8. PERFORMANCE TESTING
+
+## Start Test
+
+Operator may start any JO assigned and approved for their workstation.
+
+Validate:
+- JO final GLT GOOD.
+- Supervisor-approved allocation.
+- Workstation compatibility.
+- Workstation availability ENABLED.
+- No conflicting active attempt.
+- No conflicting active JO on the workstation.
+
+Start Test creates a new attempt using a server transaction.
+
+Record:
+- Attempt ID.
+- JO ID.
+- Workstation.
+- Terminal.
+- Server start timestamp.
+- Checksheet version snapshot.
+- Fixed Standard Duration snapshot.
+
+## Performance GOOD
+
+Require:
+- All Mandatory parameters complete.
+- All required evidence complete.
+- No NG parameters.
+- Backend validation successful.
+
+Then:
+- Commit final result GOOD.
+- Close attempt.
+- Mark JO DONE.
+- Release workstation operational reservation.
+- Automatically enqueue PDF certificate generation.
+
+Do not require Supervisor approval.
+
+## Performance NOT GOOD
+
+Require:
+- All Mandatory parameters complete.
+- At least one NG parameter.
+- Required NG descriptions/evidence.
+
+Then:
+- Close attempt as NOT GOOD.
+- Create MRI-B.
+- Preserve all failed parameters and evidence.
+- Enter Adjustment workflow.
+
+## Performance Retest
+
+Before Start Retest:
+- Require one general corrective action remark per MRI-B.
+- Do not require Supervisor approval.
+
+At Start Retest:
+- Create a new attempt.
+- Use a fresh blank checksheet.
+- Load latest published applicable checksheet version.
+- Do not copy previous GOOD/NG values.
+- Preserve all prior attempts.
+
+Retest normally remains on the same workstation unless Supervisor performs a controlled transfer.
+
+---
+
+# 9. CHECKSHEET VALIDATION ENGINE
+
+Build a reusable parameter-driven checksheet engine.
+
+Each parameter must support:
+
+- Parameter ID.
+- Parameter name.
+- Group.
+- Measurement type.
+- Unit.
+- Minimum value.
+- Maximum value.
+- Inclusive/exclusive boundaries.
+- Nominal value and tolerance.
+- Exact-value standard.
+- GOOD/NG qualitative standard.
+- Mandatory/Optional.
+- N/A permission.
+- Remark requirement.
+- Photo/evidence requirement.
+- Display order.
+- Published version.
+
+Supported measurement types:
+
+- Numeric range.
+- Nominal ± tolerance.
+- Exact numeric value.
+- Boolean GOOD/NG.
+- Pass/Fail.
+- Pressure set/drop.
+- Fill Time + Pressure.
+- Multi-condition measurement.
+- Qualitative inspection.
+- N/A where explicitly permitted.
+
+## Validation requirements
+
+`NOT CHECKED` must never become GOOD automatically.
+
+An empty field is not equivalent to zero.
+
+Zero is a valid measurement only where the standard permits it.
+
+All Mandatory parameters must be completed before either GOOD or NOT GOOD Submit.
+
+NG parameters must remain visible and must be included in MRI.
+
+Evaluate results server-side using the attempt's immutable standard snapshot.
+
+---
+
+# 10. QUALITY MASTER — CHECKSHEET LIBRARY
+
+Create a functional Quality Master library within the screenshot-based UI.
+
+Support:
+
+- Base templates by Component Category.
+- Component Model overrides.
+- Draft versions.
+- Published versions.
+- Version history.
+- Parameter editing.
+- Required evidence configuration.
+- Mandatory/Optional/N/A configuration.
+- Workstation compatibility.
+- Fixed Standard Duration.
+
+## Versioning rules
+
+Published versions are immutable.
+
+Each attempt uses a snapshot of the latest applicable published version at Start.
+
+**Decision #59: Always Use Latest Published Version for every new Reinspection/Retest attempt.**
+
+An active attempt must not change standards when a newer version is published.
+
+Previous attempts retain their original standards.
+
+If different versions are used across attempts, show the version difference in history and analytics.
+
+Model-specific requirements that prohibit fallback must be respected.
+
+---
+
+# 11. INITIAL CHECKSHEET CATEGORIES
+
+Create the following 15 categories.
+
+Use the full original checksheet data provided by the user wherever accessible.
+
+Do not invent missing standards.
+
+### A. GLT Engine
+
+Groups:
+- Fuel.
+- Water.
+- Combustion.
+- Lubrication.
+
+### B. GLT Power Train / PPM
+
+Groups:
+- Oil Line.
+- Leakage.
+
+### C. PTO
+
+Groups:
+- Lubrication.
+- Noise.
+- Leakage.
+
+### D. Cylinder
+
+Groups:
+- External Leakage.
+- Internal Leakage.
+- Pressure Power Up.
+- Pressure Power Down.
+- Multiple stages/conditions.
+
+### E. Pump Front / Rear
+
+Parameters include:
+- Flow Rate Max: 155–160 L/min.
+- Flow Rate Min: 17–22 L/min.
+- NC Output Pressure Max: greater than 20 kg/cm².
+- NC Output Pressure Min: 0 kg/cm².
+- Drive Pressure.
+- Load Pressure.
+- Oil Temperature: 50 ± 5 °C.
+
+### F. Motor
+
+Parameters include:
+- RPM: 450 ± 10.
+- Safety Valve PA/PB: 337.2 ± 3.5 kg/cm².
+- Brake Release: 15 ± 2 kg/cm².
+- Oil Temperature: 50 ± 5 °C.
+- Noise.
+- Leakage.
+
+### G. Final Drive GD
+
+Parameters include:
+- RPM: 200–500.
+- Noise.
+- Leakage.
+- Differential Lock: 2.5 MPa.
+
+### H. Final Drive PC-DZ
+
+Parameters include:
+- RPM Stage I: 100.
+- RPM Stage II: 200.
+- Noise.
+- Leakage.
+
+### I. Differential
+
+Parameters include:
+- RPM: 300–400.
+- Output Speed Sensor LH/RH.
+- CW/CCW operating conditions.
+- Temperature: 45–55 °C.
+- Differential Lock: 10 ± 5 kg/cm².
+- Noise.
+- Leakage.
+
+### J. Axle & Final Drive HD
+
+Parameters include:
+- Parking Brake Set: 85–100 kg/cm².
+- Parking Brake Pressure Drop: ≤8 kg/cm².
+- Service Brake Set: 93–107 kg/cm².
+- Service Brake Pressure Drop: ≤6 kg/cm².
+- Cooling measurements 1–6.
+- Drag Torque: 196–637 Nm.
+- Temperature: 50–55 °C.
+- Noise.
+- Leakage.
+
+### K. Front Brake & Front Axle
+
+Parameters include:
+- Parking Brake.
+- Service Brake.
+- Cooling: 5 ± 1.
+- Drag Torque CW at 30 ± 5 rpm: 196–637 Nm.
+- Drag Torque CCW at 75 ± 5 rpm: 196–735 Nm.
+- Repeated directional measurement pairs.
+- Temperature: 50–55 °C.
+- Noise.
+- Leakage.
+
+Preserve repeated measurements as separate parameter records.
+
+### L. Power Module All Series
+
+Parameters include:
+- Main Relief: 28.7–31.7 MPa.
+- Output Shaft: 760–845 rpm.
+- Torque Converter Input: 0.39–0.59 MPa.
+- Torque Converter Output: 0.05–0.49 MPa.
+- Transmission Lubrication: 0–0.1 MPa.
+- Steering Lubrication: 0.02–0.12 MPa.
+
+Clutch activation:
+- Forward.
+- Reverse.
+- 1st.
+- 2nd.
+- 3rd.
+- Lock Up.
+- Stator.
+- Left Brake.
+- Right Brake.
+- Left Clutch.
+- Right Clutch.
+- Sudden Brake Prevention Valve.
+- Sudden Brake Privation Valve.
+
+Preserve the two similarly named valves as distinct original parameters unless Quality Master confirms otherwise.
+
+Fill Time and Pressure:
+- Forward: 0.2–0.6 seconds; 2.01–2.40 MPa.
+- Reverse: 0.2–0.7 seconds; 2.01–2.40 MPa.
+- 1st: 0.2–0.7 seconds.
+- 2nd: 0.2–0.6 seconds.
+- 3rd: 0.2–0.8 seconds.
+- Left Brake: 2.53–2.92 MPa.
+- Right Brake: 2.25–2.83 MPa.
+- Left Clutch: 2.53–2.92 MPa.
+- Right Clutch: 2.58–2.97 MPa.
+- Sudden Brake Prevention: 0–0.2.
+- Sudden Brake Privation: 1.18–1.57.
+- Parking 1/2: 0–0.2.
+
+Also include:
+- Leakage.
+- Coupling Noise.
+- PTO Noise.
+- TC Noise.
+- Transmission Noise.
+- Control Valve Noise.
+- Noise threshold less than 105 dB.
+- Vibration.
+
+Retain original units and complete standards from source data.
+
+### M. Transmission GD
+
+Parameters include:
+- Main P1: 27–31 kg/cm².
+- Inching P4 Release: 0.5–1.3 kg/cm².
+- Inching P4 Inside: 27–31 kg/cm².
+- Bypass P8: 5 ± 1 kg/cm².
+- Lubricating P9: 0.5 ± 0.2 kg/cm².
+- Priority P11: 12–31 kg/cm².
+- Pilot: 11 ± 1 kg/cm².
+
+Clutch Run-In:
+- Forward F1–F8.
+- Reverse R1–R8.
+
+Modulating:
+- F/R/H/L/1/2/3/4.
+- Standard: 0.5–0.8 seconds where applicable.
+
+Inching Pressure:
+- Forward and Reverse.
+- Stroke 0, 1.5, 3, 3.5, 4, 4.5, 5, 5.5, 6, 7, 8, 20, and 23.5 mm.
+- Use original pressure standards for each stroke.
+
+Also:
+- Leakage.
+- Noise threshold less than 103 dB.
+
+### N. Transmission WA
+
+Parameters include:
+- Main Relief: 27–30 kg/cm².
+- Reducing Pressure: 19–22 kg/cm².
+- TC Relief: 7–9 kg/cm².
+- Modulating: 27–30 kg/cm².
+- Forward Gears 1–4.
+- Reverse Gears 1–4.
+- Modulating Time: 0.5–0.8 seconds where applicable.
+
+### O. Torqflow
+
+Parameters include:
+- Main Relief: 32–36 kg/cm².
+- TC Outlet: 4–6 kg/cm².
+- Lock-Up Deviation Off/On: 0.1–0.8.
+- Lubrication: 0.1–0.5.
+
+TM Speed:
+- F1–F7.
+- R1–R2.
+
+Fill Time and Pressure:
+- L: 0.2–0.8 seconds; 20–24 kg/cm².
+- R: 0.4–1.8 seconds; 21–25 kg/cm².
+- 1st: 0.2–0.8 seconds; 20–24 kg/cm².
+- 2nd: 0.2–0.8 seconds; 20–24 kg/cm².
+- 3rd: 0.2–0.8 seconds; 21–25 kg/cm².
+- 4th: 0.2–0.8 seconds; 19.5–23.5 kg/cm².
+- H: 0.2–0.7 seconds; 21–25 kg/cm².
+- Lock Up Pressure: 20.5–24.5 kg/cm².
+
+Also:
+- Leakage.
+- Noise threshold less than 95 dB.
+
+## Critical seed-data rule
+
+These values are a partial reference, not a complete approved standards database.
+
+Do not infer missing units, tolerances, thresholds, or operating conditions.
+
+Mark incomplete parameters as `UNCONFIGURED`.
+
+Quality Master must complete and publish the affected mandatory standards before operational use.
+
+Do not treat an incomplete draft as an approved testing standard.
+
+---
+
+# 12. MRI-A AND MRI-B
+
+Implement structured Multi-Defect MRI records.
+
+MRI-A = GLT NOT GOOD.
+
+MRI-B = Performance Test NOT GOOD.
+
+Each MRI contains:
+- JO reference.
+- Attempt reference.
+- Component information.
+- Failed parameter list.
+- Actual values.
+- Standards.
+- Checksheet version.
+- Symptom.
+- Defect description.
+- Additional manual defects.
+- Remarks.
+- Photos/evidence.
+- Corrective Action.
+- Server timestamps.
+
+## Corrective Action rule
+
+**Decision #57: Mandatory General Corrective Action.**
+
+Require exactly one general corrective action remark per MRI before the next Reinspection/Retest may start.
+
+The remark may describe corrective work covering multiple defects.
+
+Individual defect descriptions remain preserved.
+
+No Supervisor repair-completion approval is required.
+
+Quality Master controls whether photos and additional evidence are mandatory.
+
+---
+
+# 13. AI DISPATCH
+
+Build a deterministic, multi-factor recommendation engine.
+
+AI Dispatch recommends JO/workstation allocation.
+
+It must not autonomously approve allocations.
+
+## Hard constraints
+
+- GLT final GOOD required.
+- Workstation compatibility required.
+- Workstation availability required.
+- No conflicting active allocation.
+- No active attempt transferred automatically.
+
+## Scoring factors
+
+1. SLA Risk.
+2. Waiting Time.
+3. Fixed Standard Duration.
+4. Queue Load.
+
+Supervisor configures weights totaling 100%.
+
+Provide presets:
+- SLA First.
+- Balanced.
+- Throughput First.
+- Queue Balance.
+- Custom.
+
+Store configuration versions and audit changes.
+
+Normalize factors consistently.
+
+Use deterministic scoring with explicit backend calculations.
+
+Do not require an external generative model to rank routine allocation candidates.
+
+## Recommendation display
+
+**Show only recommended JO and workstation in the Supervisor UI.**
+
+Do not display:
+- AI numerical score.
+- Factor breakdown.
+- Explanation panel.
+
+Keep internal calculation details for audit.
+
+## Supervisor decisions
+
+Supervisor may:
+- Approve.
+- Modify.
+- Reject.
+
+No reason is required for these three decisions.
+
+Record decision, role/terminal, timestamp, and allocation details.
+
+## Dynamic recalculation
+
+Recalculate when:
+- Queue changes.
+- SLA risk changes.
+- Workstation availability changes.
+- Approved allocation changes.
+- Relevant configuration changes.
+
+Never automatically overwrite Supervisor-approved allocations.
+
+Changes require Supervisor reapproval.
+
+---
+
+# 14. WORKSTATION COMPATIBILITY
+
+Quality Master maintains compatibility rules by:
+- Component Category.
+- Component Model.
+- Workstation.
+
+Use the eight Performance Test workstations.
+
+Examples:
+- Engine components → compatible Engine Dyno stations.
+- Cylinder components → compatible Cylinder Test Bench.
+- PPM → dedicated TB1 where configured.
+- Other Power Train components → permitted TB2/TB3/MB according to the approved matrix.
+
+Do not infer compatibility solely from workstation names.
+
+Use published compatibility configuration as the source of truth.
+
+If no compatible workstation exists:
+- Do not allocate.
+- Show unallocated status.
+- Flag the configuration gap.
+
+---
+
+# 15. APPROVED QUEUE AND WORKLOAD
+
+No maximum queue size.
+
+Show:
+- Queue Count.
+- Estimated Queue Workload.
+- SLA Status.
+- Waiting Time.
+
+Estimated Queue Workload:
+
+Sum the Fixed Standard Duration of all queued JO assigned to the workstation.
+
+Exclude active testing attempts.
+
+If a required standard duration is missing, show an incomplete estimate rather than treating the missing value as zero.
+
+## Operator selection
+
+Operator may select any Supervisor-approved JO from the workstation queue.
+
+Do not enforce AI recommendation order.
+
+Only one JO may be actively tested on a workstation.
+
+## No Queue Start ETA
+
+Do not display predicted Start ETA for queued JO.
+
+Active Test Finish ETA is allowed.
+
+---
+
+# 16. WORKSTATION STATE MANAGEMENT
+
+Use two independent state dimensions.
+
+## Operational state
+
+- AVAILABLE.
+- RESERVED.
+- TESTING.
+
+Automatically derived from authoritative allocations and attempts.
+
+## Availability state
+
+- ENABLED.
+- BREAKDOWN.
+- MAINTENANCE.
+
+Supervisor controls availability.
+
+BREAKDOWN and MAINTENANCE require a reason.
+
+## Breakdown
+
+When workstation becomes unavailable:
+- Update dashboard state.
+- Identify affected JO.
+- Identify SLA risk.
+- Recalculate compatible allocation recommendations.
+- Require Supervisor approval for reassignment.
+- Do not automatically Abort active testing.
+
+After Submit GOOD, the operational reservation is released immediately.
+
+However, a workstation marked BREAKDOWN or MAINTENANCE must not be treated as operationally usable until Supervisor enables it.
+
+---
+
+# 17. UNALLOCATE, REALLOCATE AND CONTROLLED TRANSFER
+
+## Before Start Test
+
+Supervisor may:
+- Return JO to Unallocated Pool.
+- Reallocate JO directly to another compatible workstation.
+
+No Abort is required.
+
+No attempt is created.
+
+SLA and Waiting Time continue.
+
+All changes must be atomic and audited.
+
+## After Start Test
+
+Supervisor must perform Controlled Transfer:
+
+1. Abort the active Performance Attempt.
+2. Enter mandatory Abort reason.
+3. Preserve partial attempt history.
+4. Select compatible destination.
+5. Approve new allocation.
+6. Operator starts a new attempt.
+
+Do not treat transfer Abort as NG.
+
+Do not create MRI-B.
+
+---
+
+# 18. SUPERVISOR-ONLY PERFORMANCE ABORT
+
+Only Supervisor can Abort an active Performance Testing attempt.
+
+Operator cannot Abort.
+
+Mandatory reason.
+
+Result = `ABORTED`.
+
+Preserve:
+- Start timestamp.
+- End timestamp.
+- Partial checksheet.
+- Workstation.
+- Attempt duration.
+- Reason.
+- Audit history.
+
+ABORTED time is included in:
+- Actual Testing Time.
+- Workstation occupancy/utilization.
+
+Also report ABORTED Time separately.
+
+ABORTED is not equivalent to machine-running time.
+
+No MRI-B is created.
+
+A new testing attempt is required to continue.
+
+**GLT Abort remains prohibited.**
+
+---
+
+# 19. CONTINUOUS TIMERS
+
+No Pause/Resume.
+
+Use server-authoritative timestamps.
+
+Timers continue when:
+- Browser closes.
+- Browser refreshes.
+- Network disconnects.
+- Operator changes screen.
+
+Recover the active attempt when the terminal reconnects.
+
+Do not create duplicate attempts.
+
+No automatic timeout.
+
+No automatic Abort.
+
+Long attempts are monitoring-only.
+
+---
+
+# 20. LEAD TIME DEFINITIONS
+
+## GLT Lead Time
+
+Calendar elapsed:
+
+`Final GLT GOOD Submit − JO Received`
+
+Includes:
+- Waiting.
+- GLT attempts.
+- MRI-A.
+- Reinspection.
+
+## Testing Lead Time
+
+Calendar elapsed:
+
+`Final Performance GOOD Submit − First Performance Test Start`
+
+Includes:
+- Initial testing.
+- MRI-B.
+- Adjustment.
+- Waiting.
+- Retest.
+- Aborted attempts.
+- Interruptions.
+
+## Actual Testing Time
+
+Sum of all Performance Attempt durations in the current cycle:
+
+`GOOD + NOT GOOD + ABORTED`
+
+## Adjustment Time
+
+Elapsed interval:
+
+`Performance NOT GOOD Submit → Next Start Retest`
+
+## MRI-A Interval
+
+Elapsed interval:
+
+`GLT NOT GOOD Submit → Next Start Reinspection`
+
+Do not label the full interval as pure hands-on repair labor.
+
+---
+
+# 21. SLA ENGINE
+
+SLA uses Working Hours, not calendar elapsed time.
+
+Supervisor configures:
+- Shift calendar.
+- Working days.
+- Breaks.
+- Holidays.
+- Timezone.
+- Category SLA targets.
+- Model overrides.
+- Warning thresholds.
+
+Timezone: Asia/Makassar.
+
+## Dual SLA
+
+**Total SLA:** Includes MRI/Adjustment intervals.
+
+**Controllable SLA:** Excludes MRI/Adjustment intervals.
+
+Primary operational SLA status is Total SLA.
+
+Display:
+- ON TRACK.
+- WARNING.
+- OVERDUE.
+
+Preserve SLA configuration snapshots for historical interpretation.
+
+Do not confuse calendar lead time with working-hour SLA.
+
+---
+
+# 22. FIXED STANDARD DURATION AND ETA
+
+Quality Master configures Fixed Standard Duration by category with model overrides.
+
+Do not substitute historical AI prediction for the approved duration.
+
+Active testing indicative ETA:
+
+`Start Test + Fixed Standard Duration`
+
+Use the original server start timestamp.
+
+Show it as an estimate, not a guarantee.
+
+Do not show predicted Queue Start ETA.
+
+---
+
+# 23. SUPERVISOR DASHBOARD
+
+Reconstruct the Supervisor Dashboard from the screenshots.
+
+Preserve:
+- KPI cards.
+- Workstation allocation visualization.
+- Queue presentation.
+- SLA indicators.
+- Existing dashboard hierarchy.
+
+Specific requirements:
+- Remove separate GLT Gate Monitoring navigation.
+- Place JO Pipeline beneath KPI cards.
+- Remove unnecessary Next indicators from GLT and Performance cards.
+- Preserve the existing allocation-board concept.
+- Keep workstation status visible.
+- Display Queue Count and Workload.
+- Display AI recommended JO/workstation.
+- Provide Supervisor approval controls.
+
+Do not create a completely new dashboard design.
+
+---
+
+# 24. OPERATOR PAGES
+
+## GLT Operator Page
+
+Keep within one existing-style page:
+- Receive JO.
+- Start GLT.
+- Checksheet.
+- Submit.
+- MRI-A.
+- Reinspection.
+- Relevant queue.
+- JO Pipeline beneath GLT Gate.
+
+## Performance Operator Page
+
+Keep within one existing-style page:
+- Approved queue.
+- Select JO.
+- Start Test.
+- Checksheet.
+- Submit.
+- MRI-B.
+- Retest.
+- Relevant JO Pipeline.
+
+Avoid unnecessary navigation between multiple new pages.
+
+---
+
+# 25. FULLSCREEN MONITORING
+
+Create the 16:9 fullscreen monitoring dashboard matching the supplied screenshot style.
+
+Show:
+- Active JO.
+- Component/model.
+- Workstation.
+- Status.
+- Elapsed testing time.
+- Active testing ETA.
+- Relevant next/queued JO.
+- SLA status.
+
+Preserve the existing composition.
+
+Do not add:
+- Notification center.
+- Notification bell.
+- Buzzer.
+- Audio alerts.
+- Popup monitoring alarms.
+- Automatic timeout escalation.
+
+Use dashboard status indicators only.
+
+---
+
+# 26. ANALYTICS
+
+Support:
+- Realtime.
+- Daily.
+- Weekly.
+- Monthly.
+- Custom range.
+
+Filters:
+- Component Category.
+- Component Model.
+- Workstation.
+- Status.
+- Operational period.
+
+Required metrics:
+- GLT Lead Time.
+- Testing Lead Time.
+- Actual Testing Time.
+- Adjustment Time.
+- MRI-A Frequency.
+- MRI-B Frequency.
+- Reinspection/Retest Frequency.
+- Total SLA Achievement.
+- Controllable SLA.
+- Waiting Time.
+- Queue Count.
+- Queue Workload.
+- Workstation Utilization.
+- Standard Duration vs Actual.
+- ETA Accuracy.
+- Dispatch Effectiveness.
+- AI Recommendation Acceptance.
+- AI Recommendation Modification.
+- ABORTED Time.
+
+Workstation utilization must use a clearly defined eligible-time denominator.
+
+Account for BREAKDOWN/MAINTENANCE availability.
+
+Do not equate workstation occupancy with actual machine-running time.
+
+Use completion-based denominators for monthly SLA achievement.
+
+Provide JO-level drill-down.
+
+Exports:
+- Excel.
+- CSV.
+- PDF.
+
+Export results must match the selected dashboard filters.
+
+---
+
+# 27. SUPERVISOR CORRECTION
+
+Supervisor may correct:
+- Submitted parameter values.
+- Remarks.
+- GOOD/NOT GOOD outcomes.
+
+Require:
+- Original value.
+- Corrected value.
+- Reason.
+- Role/terminal.
+- Server timestamp.
+- Related attempt.
+
+Preserve immutable correction audit records.
+
+Recompute affected results using the original attempt's standards.
+
+If GOOD becomes NG:
+- Invalidate dependent certificate.
+- Reconcile JO state.
+- Prevent invalid downstream testing eligibility.
+- Preserve historical actions.
+
+Do not silently rewrite completed records.
+
+---
+
+# 28. JO CANCELLATION
+
+Supervisor may CANCEL only before Start GLT.
+
+Mandatory reason and audit.
+
+Once GLT has started:
+- Cancellation prohibited.
+- No Administrative Hold.
+- No Termination status.
+
+---
+
+# 29. JO REOPEN
+
+Supervisor may Reopen DONE or CANCELLED JO.
+
+Require:
+- Reopen reason.
+- Selected restart stage.
+- Server timestamp.
+- Audit history.
+
+Create a new workflow cycle.
+
+Preserve all previous cycles.
+
+A reopened Performance Test still requires a valid GLT GOOD prerequisite.
+
+Reopened JO must receive a new approved compatible allocation before testing.
+
+## KPI cycle rule
+
+Current KPI uses the latest cycle only.
+
+Previous cycles remain accessible for audit and historical reporting.
+
+Do not delete previous attempts.
+
+---
+
+# 30. AUTOMATIC TEST CERTIFICATE
+
+**Confirmed Decision #60: Automatic Certificate Generation.**
+
+When Performance Submit GOOD succeeds:
+
+1. Commit the final GOOD attempt.
+2. Set JO DONE.
+3. Release workstation.
+4. Trigger certificate-generation job.
+5. Generate PDF from committed server data.
+6. Store PDF in Firebase Storage.
+7. Store certificate metadata in Firestore.
+8. Make the valid PDF available for download.
+
+No Supervisor approval required.
+
+## Certificate content
+
+Use screenshot/reference certificate design where available.
+
+Include:
+- Company/application identity.
+- JO Number.
+- Component Category.
+- Component Model.
+- Unit Model.
+- Assembler.
+- Assembly Date.
+- Workstation.
+- Testing date.
+- GOOD result.
+- Final checksheet.
+- Actual values.
+- Applicable standards.
+- Units.
+- Checksheet version.
+- Certificate issue timestamp.
+- Certificate identifier.
+
+Do not invent company logos, signatures, or measurements.
+
+## Single latest certificate
+
+Only one active certificate PDF per JO.
+
+When a newer valid certificate is generated:
+- Invalidate the old active certificate.
+- Replace or remove old active PDF as appropriate.
+- Preserve underlying attempt and audit history.
+
+When JO is Reopened or GOOD becomes NG:
+- Invalidate certificate immediately.
+- Prevent authorized downloads of invalid certificate.
+
+Already downloaded external files cannot be revoked.
+
+## Idempotency
+
+Use a unique generation job key tied to the authoritative final GOOD result.
+
+Repeated retries must not create duplicate active certificates.
+
+If PDF generation fails:
+- JO remains DONE.
+- Workstation remains released.
+- Certificate status becomes ERROR or PENDING_RETRY.
+- Retry safely.
+- Do not duplicate GOOD Submit.
+
+---
+
+# 31. FIREBASE DATA MODEL
+
+Use a reliable Firestore structure.
+
+Suggested collections:
+
+```text
+jobOrders
+jobCycles
+gltAttempts
+performanceAttempts
+mriRecords
+allocations
+workstations
+checksheetTemplates
+checksheetVersions
+componentModels
+compatibilityRules
+standardDurations
+slaConfigurations
+workingCalendars
+dispatchConfigurations
+dispatchRecommendations
+certificates
+auditEvents
+operationRequests
+```
+
+Suggested JO fields:
+
+```typescript
+interface JobOrder {
+  id: string;
+  joNumber: string;
+  componentCategory: string;
+  componentModel: string;
+  unitModel: string;
+  assembler: string;
+  assemblyDate: string;
+
+  receivedAt: Timestamp;
+  receivingTerminalId: string;
+
+  status: string;
+  currentCycleId: string;
+
+  finalGltResult?: "GOOD" | "NOT_GOOD";
+  approvedWorkstationId?: string;
+
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+```
+
+Suggested attempt fields:
+
+```typescript
+interface TestingAttempt {
+  id: string;
+  joId: string;
+  cycleId: string;
+  attemptNumber: number;
+
+  workstationId: string;
+  terminalId: string;
+
+  startedAt: Timestamp;
+  endedAt?: Timestamp;
+
+  result?: "GOOD" | "NOT_GOOD" | "ABORTED";
+
+  checksheetVersionId: string;
+  checksheetSnapshot: unknown;
+
+  standardDurationMinutes?: number;
+
+  measurements: unknown[];
+  evidenceRefs: string[];
+
+  abortReason?: string;
+}
+```
+
+Use strongly typed production structures rather than leaving important fields as unvalidated `unknown`.
+
+These examples describe intent, not a mandatory exact schema.
+
+---
+
+# 32. ATOMIC TRANSACTIONS
+
+Use server-validated, idempotent transactions for:
+
+- Receive JO.
+- Start GLT.
+- Submit GLT.
+- Start Reinspection.
+- Supervisor allocation.
+- Unallocate.
+- Reallocate.
+- Start Performance Test.
+- Submit Performance Test.
+- Start Retest.
+- Supervisor Abort.
+- Cancel.
+- Reopen.
+- Supervisor correction.
+
+Prevent:
+- Duplicate JO.
+- Duplicate attempts.
+- Duplicate active allocation.
+- Double Submit.
+- Conflicting workstation occupancy.
+- Unauthorized state transitions.
+
+Use idempotency keys.
+
+Do not rely on frontend button disabling alone.
+
+---
+
+# 33. OFFLINE AND AUTOSAVE
+
+Implement:
+- Parameter-level autosave.
+- Local draft recovery.
+- Reconnect synchronization.
+- Active attempt recovery.
+- Realtime Firestore updates.
+- Conflict audit.
+
+## Multiple browser drafts
+
+Use last-write-wins only for parameter-level drafts.
+
+Record revision metadata.
+
+Do not use last-write-wins for:
+- JO status.
+- Allocation.
+- Start/end timestamps.
+- Final Submit.
+- Certificate validity.
+- Workstation occupancy.
+
+Those require atomic server transactions.
+
+## Offline Submit
+
+Offline draft editing is allowed.
+
+**Final Submit offline is prohibited.**
+
+On reconnect:
+- Validate authoritative JO state.
+- Restore the correct attempt.
+- Reconcile draft revisions.
+- Avoid duplicate attempts.
+
+---
+
+# 34. FIREBASE STORAGE
+
+Use Firebase Storage for:
+- MRI photos.
+- Inspection evidence.
+- Supporting files.
+- Certificate PDF.
+
+Use Firestore for metadata.
+
+No automatic retention schedule.
+
+Support authorized manual deletion.
+
+Prevent orphaned metadata and storage references.
+
+Enforce secure Storage Rules.
+
+---
+
+# 35. AUDIT TRAIL
+
+Audit important actions:
+
+- JO Receive.
+- Receiving-data correction.
+- GLT Start.
+- GLT Submit.
+- MRI creation.
+- Corrective Action.
+- Reinspection.
+- Performance Start.
+- Performance Submit.
+- Retest.
+- Abort.
+- Allocation.
+- Reallocation.
+- Workstation breakdown/maintenance.
+- SLA configuration changes.
+- AI weight changes.
+- Quality Master publication.
+- Supervisor correction.
+- Cancellation.
+- Reopen.
+- Certificate generation/invalidation.
+
+Record:
+- Action.
+- Target entity.
+- Old/new values where relevant.
+- Terminal/role.
+- Server timestamp.
+- Mandatory reason where applicable.
+
+Do not allow ordinary operators to modify audit history.
+
+---
+
+# 36. SECURITY REQUIREMENTS
+
+Implement backend authorization for every privileged action.
+
+Use:
+- Secure Firebase Authentication or equivalent.
+- Server-verified role/terminal permissions.
+- Least-privilege Firestore Rules.
+- Storage Rules.
+- Protected server endpoints.
+- Input validation.
+- Idempotency.
+- Audit logging.
+
+Do not:
+- Use `allow read, write: if true`.
+- Trust client-submitted role strings.
+- Store Admin SDK secrets in frontend code.
+- Permit direct unauthorized mutation of final attempts.
+- Permit operator-side Supervisor actions.
+
+Preserve Terminal Identity Only as the operational attribution model.
+
+Security authentication and personal operator identification are separate concerns.
+
+---
+
+# 37. IMPLEMENTATION PHASES
+
+Implement in this order.
+
+## Phase 1 — Visual Reconstruction
+
+- Analyze screenshots.
+- Reconstruct landing page.
+- Reconstruct 12 terminal cards.
+- Reconstruct dashboards.
+- Reconstruct operator pages.
+- Reconstruct allocation board.
+- Reconstruct Quality Master layout.
+- Reconstruct monitoring screen.
+
+Do not invent a different design.
+
+## Phase 2 — Firebase Foundation
+
+- Initialize Firebase.
+- Define schema.
+- Implement authentication.
+- Implement security rules.
+- Implement transactions.
+- Implement audit logging.
+- Implement realtime listeners.
+
+## Phase 3 — Quality Master
+
+- Template library.
+- Category/model overrides.
+- Parameter engine.
+- Published versions.
+- Compatibility matrix.
+- Standard duration.
+- Evidence requirements.
+
+## Phase 4 — GLT Workflow
+
+- Receive.
+- Start GLT.
+- Checksheet.
+- Submit.
+- MRI-A.
+- Corrective Action.
+- Reinspection.
+
+## Phase 5 — Performance Workflow
+
+- Approved queue.
+- Start Test.
+- Checksheet.
+- Submit.
+- MRI-B.
+- Adjustment.
+- Retest.
+- Supervisor Abort.
+
+## Phase 6 — Supervisor and AI Dispatch
+
+- Allocation board.
+- AI scoring.
+- Weight presets.
+- Approval.
+- Dynamic recommendations.
+- Transfer.
+- Breakdown handling.
+
+## Phase 7 — SLA and Analytics
+
+- Working calendar.
+- SLA engine.
+- Lead Time.
+- Utilization.
+- Realtime monitoring.
+- Historical trends.
+- Exports.
+
+## Phase 8 — Certificate
+
+- Automatic PDF generation.
+- Firebase Storage.
+- Certificate invalidation.
+- Idempotent retries.
+
+## Phase 9 — End-to-End Verification
+
+Test all major workflows.
+
+## Phase 10 — Visual Regression
+
+Compare implemented screens against original screenshots.
+
+Fix visual differences without breaking functionality.
+
+---
+
+# 38. MANDATORY END-TO-END TEST CASES
+
+### Test 1 — Normal GOOD
+
+Receive → GLT GOOD → AI Recommendation → Supervisor Approval → Performance GOOD → DONE → Certificate.
+
+### Test 2 — GLT NG
+
+GLT NG → MRI-A → Corrective Action → Fresh Reinspection → GOOD.
+
+### Test 3 — Performance NG
+
+Performance NG → MRI-B → Corrective Action → Fresh Retest → GOOD.
+
+### Test 4 — Multiple Defects
+
+Several NG parameters generate one MRI with complete defect details.
+
+### Test 5 — Latest Published Checksheet
+
+Publish a new checksheet version between attempts.
+
+Verify new attempt uses latest version.
+
+Previous attempt retains original snapshot.
+
+### Test 6 — Incomplete Mandatory
+
+Block GOOD and NG Submit when mandatory parameters remain incomplete.
+
+### Test 7 — AI Recommendation
+
+Verify compatibility and configurable scoring.
+
+### Test 8 — Supervisor Approval
+
+Verify AI cannot allocate without Supervisor approval.
+
+### Test 9 — Free Queue Selection
+
+Operator starts a non-first approved JO.
+
+### Test 10 — Concurrent Start
+
+Two clients attempt to start the same JO.
+
+Only one succeeds.
+
+### Test 11 — Workstation Conflict
+
+Prevent two active attempts on one workstation.
+
+### Test 12 — Supervisor Abort
+
+Abort active Performance Attempt.
+
+Preserve partial history and duration.
+
+No MRI-B.
+
+### Test 13 — GLT Abort Prohibition
+
+Verify GLT cannot be aborted through UI or backend.
+
+### Test 14 — Offline Recovery
+
+Disconnect, edit draft, reconnect, restore attempt.
+
+No duplicate Submit.
+
+### Test 15 — Breakdown
+
+Mark workstation BREAKDOWN.
+
+Verify impact analysis and controlled reassignment.
+
+### Test 16 — SLA
+
+Verify working-hour calculations across shifts, breaks, and holidays.
+
+### Test 17 — Reopen
+
+Reopen DONE JO.
+
+Preserve historical cycle and invalidate certificate.
+
+### Test 18 — Certificate Retry
+
+Retry generation multiple times.
+
+Only one active certificate.
+
+### Test 19 — Unauthorized Action
+
+Operator attempts Supervisor action through direct backend request.
+
+Reject it.
+
+### Test 20 — UI Fidelity
+
+Compare every reconstructed screen against the supplied DynoDyn screenshots.
+
+Do not approve a generic replacement design.
+
+---
+
+# 39. FINAL ACCEPTANCE CRITERIA
+
+The application is acceptable only when:
+
+- All 12 terminal access points exist.
+- The screenshot-based DynoDyn visual identity is preserved.
+- JO receiving is persistent.
+- GLT GOOD/NG works.
+- MRI-A and MRI-B work.
+- Fresh Reinspection/Retest works.
+- Latest published checksheet versions are used for new attempts.
+- Quality Master manages standards.
+- AI Dispatch recommends compatible allocations.
+- Supervisor approval is enforced.
+- Approved queue selection works.
+- Performance Testing works.
+- Supervisor Abort works.
+- SLA calculations work.
+- Realtime monitoring works.
+- Analytics and exports work.
+- Automatic Certificate generation works.
+- Reopen and corrections preserve audit history.
+- Firebase authorization is enforced.
+- Concurrent operations cannot corrupt JO or workstation state.
+- Offline draft recovery works.
+- No unverified feature is falsely reported as complete.
+
+---
+
+# 40. REQUIRED FINAL OUTPUT
+
+Deliver a working DynoDyn application, not just a visual prototype.
+
+Provide:
+
+1. Complete frontend source code.
+2. Backend and Firebase integration.
+3. Firestore schema and indexes.
+4. Firestore Security Rules.
+5. Storage Security Rules.
+6. Server-side transaction handlers.
+7. Quality Master seed/configuration mechanism.
+8. AI Dispatch engine.
+9. SLA engine.
+10. Analytics and export functionality.
+11. Automatic PDF Certificate generation.
+12. End-to-end test results.
+13. Deployment instructions.
+14. Clear list of any unverified external dependencies.
+
+If credentials, external access, or deployment permissions are unavailable, implement what can be implemented and clearly identify what still requires configuration.
+
+Never claim deployment success without verification.
+
+Never fabricate missing test standards.
+
+Never claim original DynoDyn source code was available.
+
+---
+
+# FINAL EXECUTION DIRECTIVE
+
+**BUILD DYNODYN FROM SCRATCH IN GOOGLE AI STUDIO BUILD.**
+
+**RECONSTRUCT THE ORIGINAL UI FROM THE SUPPLIED SCREENSHOTS.**
+
+**USE https://dynodyn.ai.studio/ AS THE PRIMARY APPLICATION REFERENCE.**
+
+**USE https://github.com/pcarifins/aqualitypro AS A TECHNICAL REFERENCE ONLY.**
+
+**IMPLEMENT ALL 60 CONFIRMED WORKFLOW DECISIONS.**
+
+**USE FIREBASE FOR PERSISTENT, REALTIME, AUDITABLE DATA.**
+
+**IMPLEMENT THE COMPLETE RECEIVE → GLT → MRI-A → AI DISPATCH → PERFORMANCE TEST → MRI-B → RETEST → DONE → AUTOMATIC CERTIFICATE WORKFLOW.**
+
+**NO GENERIC UI REDESIGN. NO FAKE BACKEND. NO FABRICATED STANDARDS.**
+
+Begin with reference analysis and visual reconstruction, then progressively implement and verify the complete operational workflow.

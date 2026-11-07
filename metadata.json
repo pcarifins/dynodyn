@@ -1,0 +1,6 @@
+{
+  "name": "DynoDyn - Quality Gate & Performance Testing System",
+  "description": "Industrial Quality Gate, Performance Testing, AI Dispatch, JO Pipeline, SLA Monitoring & Automatic Test Certificate",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
