@@ -465,25 +465,20 @@ class FirestoreDataStore {
       updatedAt: now
     };
 
-    if (!this.isQuotaExhausted) {
-      try {
-        await runTransaction(firestoreDb, async (transaction) => {
-          const existingDoc = await transaction.get(joRef);
-          if (existingDoc.exists()) {
-            throw new Error(`Job Order number ${cleanJoNum} already exists in database.`);
-          }
-          transaction.set(joRef, {
-            ...createdJo,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp()
-          });
-        });
-      } catch (error: any) {
-        if (error.message && error.message.includes('already exists')) {
-          return { success: false, error: error.message };
+    try {
+      await runTransaction(firestoreDb, async (transaction) => {
+        const existingDoc = await transaction.get(joRef);
+        if (existingDoc.exists()) {
+          throw new Error(`Job Order number ${cleanJoNum} already exists in database.`);
         }
-        this.handleCloudError(error, 'receiveJobOrder');
-      }
+        transaction.set(joRef, {
+          ...createdJo,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+      });
+    } catch (error: any) {
+      return { success: false, error: error.message || 'Gagal menyimpan Job Order ke server Firestore.' };
     }
 
     this.jobOrders.unshift(createdJo);
@@ -535,22 +530,20 @@ class FirestoreDataStore {
       evidencePhotos: []
     };
 
-    if (!this.isQuotaExhausted) {
-      try {
-        await runTransaction(firestoreDb, async (transaction) => {
-          transaction.set(attRef, {
-            ...newAttempt,
-            startedAt: serverTimestamp()
-          });
-          transaction.update(joRef, {
-            status: 'IN_GLT',
-            activeAttemptId: attemptId,
-            updatedAt: serverTimestamp()
-          });
+    try {
+      await runTransaction(firestoreDb, async (transaction) => {
+        transaction.set(attRef, {
+          ...newAttempt,
+          startedAt: serverTimestamp()
         });
-      } catch (e: any) {
-        this.handleCloudError(e, 'startGltAttempt');
-      }
+        transaction.update(joRef, {
+          status: 'IN_GLT',
+          activeAttemptId: attemptId,
+          updatedAt: serverTimestamp()
+        });
+      });
+    } catch (e: any) {
+      return { success: false, error: e.message || 'Gagal memulai GLT di server Firestore.' };
     }
 
     this.attempts.push(newAttempt);
@@ -577,7 +570,7 @@ class FirestoreDataStore {
     terminalId: string
   ): Promise<{ success: boolean; error?: string }> {
     if (!isOnline()) {
-      return { success: false, error: 'Tidak dapat melakukan Submit saat offline. Pastikan koneksi internet terhubung untuk menjaga integritas data server.' };
+      return { success: false, error: 'Tidak dapat melakukan Submit saat offline. Pastikan koneksi internet terhubung.' };
     }
 
     await ensureAuthenticated();
@@ -590,67 +583,65 @@ class FirestoreDataStore {
     const isGood = payload.overallEvaluation === 'GOOD';
     const mriId = `mri-a-${jo.id}-${Date.now()}`;
 
-    if (!this.isQuotaExhausted) {
-      try {
-        const attRef = doc(firestoreDb, 'testingAttempts', attemptId);
-        const joRef = doc(firestoreDb, 'jobOrders', jo.id);
+    try {
+      const attRef = doc(firestoreDb, 'testingAttempts', attemptId);
+      const joRef = doc(firestoreDb, 'jobOrders', jo.id);
 
-        await runTransaction(firestoreDb, async (transaction) => {
-          transaction.update(attRef, {
-            measurements: payload.measurements,
-            overallEvaluation: payload.overallEvaluation,
-            remarks: payload.remarks || '',
-            evidencePhotos: payload.evidencePhotos || [],
-            endedAt: serverTimestamp(),
-            result: payload.overallEvaluation
-          });
-
-          if (isGood) {
-            transaction.update(joRef, {
-              status: 'READY_FOR_ALLOCATION',
-              finalGltResult: 'GOOD',
-              gltCompletedAt: serverTimestamp(),
-              activeAttemptId: null,
-              updatedAt: serverTimestamp()
-            });
-          } else {
-            const mriRef = doc(firestoreDb, 'mriRecords', mriId);
-            const mri: MriRecord = {
-              id: mriId,
-              mriType: 'MRI-A',
-              joId: jo.id,
-              attemptId: attempt.id,
-              createdAt: now,
-              componentCategory: jo.componentCategory,
-              componentModel: jo.componentModel,
-              unitModel: jo.unitModel,
-              assembler: jo.assembler,
-              failedParameters: [{
-                parameterId: 'glt_ng',
-                parameterName: 'GLT Leakage Anomaly',
-                actualValue: 'Failed',
-                standard: 'No Leakage',
-                defectDescription: payload.remarks || 'Leakage detected during GLT'
-              }],
-              status: 'OPEN'
-            };
-            transaction.set(mriRef, {
-              ...mri,
-              createdAt: serverTimestamp()
-            });
-            transaction.update(joRef, {
-              hasMriA: true,
-              latestMriAId: mriId,
-              finalGltResult: 'NOT_GOOD',
-              status: 'WAITING_GLT',
-              activeAttemptId: null,
-              updatedAt: serverTimestamp()
-            });
-          }
+      await runTransaction(firestoreDb, async (transaction) => {
+        transaction.update(attRef, {
+          measurements: payload.measurements,
+          overallEvaluation: payload.overallEvaluation,
+          remarks: payload.remarks || '',
+          evidencePhotos: payload.evidencePhotos || [],
+          endedAt: serverTimestamp(),
+          result: payload.overallEvaluation
         });
-      } catch (e: any) {
-        this.handleCloudError(e, 'submitGltAttempt');
-      }
+
+        if (isGood) {
+          transaction.update(joRef, {
+            status: 'READY_FOR_ALLOCATION',
+            finalGltResult: 'GOOD',
+            gltCompletedAt: serverTimestamp(),
+            activeAttemptId: null,
+            updatedAt: serverTimestamp()
+          });
+        } else {
+          const mriRef = doc(firestoreDb, 'mriRecords', mriId);
+          const mri: MriRecord = {
+            id: mriId,
+            mriType: 'MRI-A',
+            joId: jo.id,
+            attemptId: attempt.id,
+            createdAt: now,
+            componentCategory: jo.componentCategory,
+            componentModel: jo.componentModel,
+            unitModel: jo.unitModel,
+            assembler: jo.assembler,
+            failedParameters: [{
+              parameterId: 'glt_ng',
+              parameterName: 'GLT Leakage Anomaly',
+              actualValue: 'Failed',
+              standard: 'No Leakage',
+              defectDescription: payload.remarks || 'Leakage detected during GLT'
+            }],
+            status: 'OPEN'
+          };
+          transaction.set(mriRef, {
+            ...mri,
+            createdAt: serverTimestamp()
+          });
+          transaction.update(joRef, {
+            hasMriA: true,
+            latestMriAId: mriId,
+            finalGltResult: 'NOT_GOOD',
+            status: 'WAITING_GLT',
+            activeAttemptId: null,
+            updatedAt: serverTimestamp()
+          });
+        }
+      });
+    } catch (e: any) {
+      return { success: false, error: e.message || 'Gagal menyimpan hasil GLT ke server Firestore.' };
     }
 
     attempt.measurements = payload.measurements;
@@ -733,38 +724,36 @@ class FirestoreDataStore {
 
     const currentQueue = ws.currentQueue || [];
     const newQueue = currentQueue.includes(jo.id) ? currentQueue : [...currentQueue, jo.id];
-    ws.currentQueue = newQueue;
-    if (ws.operationalState === 'AVAILABLE') {
-      ws.operationalState = 'RESERVED';
+    const targetWsState = ws.operationalState === 'AVAILABLE' ? 'RESERVED' : ws.operationalState;
+
+    try {
+      const joRef = doc(firestoreDb, 'jobOrders', jo.id);
+      const wsRef = doc(firestoreDb, 'workstations', ws.id);
+      await runTransaction(firestoreDb, async (transaction) => {
+        transaction.update(wsRef, {
+          currentQueue: newQueue,
+          operationalState: targetWsState
+        });
+        transaction.update(joRef, {
+          status: 'ALLOCATED',
+          approvedWorkstationId: ws.id,
+          allocatedAt: serverTimestamp(),
+          queueSequence: newQueue.length,
+          updatedAt: serverTimestamp()
+        });
+      });
+    } catch (e: any) {
+      return { success: false, error: e.message || 'Gagal alokasi JO ke server Firestore.' };
     }
+
+    ws.currentQueue = newQueue;
+    ws.operationalState = targetWsState;
 
     jo.status = 'ALLOCATED';
     jo.approvedWorkstationId = ws.id;
     jo.allocatedAt = now;
     jo.queueSequence = newQueue.length;
     jo.updatedAt = now;
-
-    if (!this.isQuotaExhausted) {
-      try {
-        const joRef = doc(firestoreDb, 'jobOrders', jo.id);
-        const wsRef = doc(firestoreDb, 'workstations', ws.id);
-        await runTransaction(firestoreDb, async (transaction) => {
-          transaction.update(wsRef, {
-            currentQueue: newQueue,
-            operationalState: ws.operationalState
-          });
-          transaction.update(joRef, {
-            status: 'ALLOCATED',
-            approvedWorkstationId: ws.id,
-            allocatedAt: serverTimestamp(),
-            queueSequence: newQueue.length,
-            updatedAt: serverTimestamp()
-          });
-        });
-      } catch (e: any) {
-        this.handleCloudError(e, 'allocateJobOrder');
-      }
-    }
 
     await this.logAudit('ALLOCATE_JO', 'JobOrder', joId, terminalId, 'SPV_QC', undefined, { workstationId });
     this.notify();
@@ -825,31 +814,29 @@ class FirestoreDataStore {
       evidencePhotos: []
     };
 
-    if (!this.isQuotaExhausted) {
-      try {
-        const joRef = doc(firestoreDb, 'jobOrders', jo.id);
-        const wsRef = doc(firestoreDb, 'workstations', ws.id);
-        const attRef = doc(firestoreDb, 'testingAttempts', attemptId);
+    try {
+      const joRef = doc(firestoreDb, 'jobOrders', jo.id);
+      const wsRef = doc(firestoreDb, 'workstations', ws.id);
+      const attRef = doc(firestoreDb, 'testingAttempts', attemptId);
 
-        await runTransaction(firestoreDb, async (transaction) => {
-          transaction.set(attRef, {
-            ...newAttempt,
-            startedAt: serverTimestamp()
-          });
-          transaction.update(wsRef, {
-            operationalState: 'ACTIVE_TESTING',
-            activeJoId: jo.id,
-            activeAttemptId: attemptId
-          });
-          transaction.update(joRef, {
-            status: 'IN_PERFORMANCE',
-            activeAttemptId: attemptId,
-            updatedAt: serverTimestamp()
-          });
+      await runTransaction(firestoreDb, async (transaction) => {
+        transaction.set(attRef, {
+          ...newAttempt,
+          startedAt: serverTimestamp()
         });
-      } catch (e: any) {
-        this.handleCloudError(e, 'startPerformanceAttempt');
-      }
+        transaction.update(wsRef, {
+          operationalState: 'ACTIVE_TESTING',
+          activeJoId: jo.id,
+          activeAttemptId: attemptId
+        });
+        transaction.update(joRef, {
+          status: 'IN_PERFORMANCE',
+          activeAttemptId: attemptId,
+          updatedAt: serverTimestamp()
+        });
+      });
+    } catch (e: any) {
+      return { success: false, error: e.message || 'Gagal memulai pengujian performa di server Firestore.' };
     }
 
     this.attempts.push(newAttempt);
@@ -881,7 +868,7 @@ class FirestoreDataStore {
     terminalId: string
   ): Promise<{ success: boolean; certificate?: TestCertificate; error?: string }> {
     if (!isOnline()) {
-      return { success: false, error: 'Tidak dapat melakukan Submit saat offline. Pastikan koneksi internet terhubung untuk menjaga integritas data server.' };
+      return { success: false, error: 'Tidak dapat melakukan Submit saat offline.' };
     }
 
     await ensureAuthenticated();
@@ -895,6 +882,100 @@ class FirestoreDataStore {
     const isGood = payload.overallEvaluation === 'GOOD';
     let generatedCert: TestCertificate | undefined;
 
+    if (isGood) {
+      generatedCert = generateTestCertificate(jo, attempt, ws?.name || 'Performance Bench');
+    }
+
+    const mriId = `mri-b-${jo.id}-${Date.now()}`;
+
+    try {
+      const attRef = doc(firestoreDb, 'testingAttempts', attemptId);
+      const joRef = doc(firestoreDb, 'jobOrders', jo.id);
+      const wsRef = ws ? doc(firestoreDb, 'workstations', ws.id) : undefined;
+
+      await runTransaction(firestoreDb, async (transaction) => {
+        transaction.update(attRef, {
+          measurements: payload.measurements,
+          overallEvaluation: payload.overallEvaluation,
+          remarks: payload.remarks || '',
+          evidencePhotos: payload.evidencePhotos || [],
+          endedAt: serverTimestamp(),
+          result: payload.overallEvaluation
+        });
+
+        if (isGood && generatedCert) {
+          const certRef = doc(firestoreDb, 'certificates', `cert-${jo.id}`);
+          transaction.set(certRef, {
+            ...generatedCert,
+            issuedAt: serverTimestamp()
+          });
+
+          if (wsRef && ws) {
+            const updatedQueue = (ws.currentQueue || []).filter((id) => id !== jo.id && id !== jo.joNumber);
+            transaction.update(wsRef, {
+              activeJoId: null,
+              activeAttemptId: null,
+              currentQueue: updatedQueue,
+              operationalState: updatedQueue.length > 0 ? 'RESERVED' : 'AVAILABLE'
+            });
+          }
+
+          transaction.update(joRef, {
+            status: 'DONE',
+            finalPerformanceResult: 'GOOD',
+            performanceCompletedAt: serverTimestamp(),
+            certificateId: generatedCert.certificateNumber,
+            activeAttemptId: null,
+            updatedAt: serverTimestamp()
+          });
+        } else {
+          const mriRef = doc(firestoreDb, 'mriRecords', mriId);
+          const mri: MriRecord = {
+            id: mriId,
+            mriType: 'MRI-B',
+            joId: jo.id,
+            attemptId: attempt.id,
+            createdAt: now,
+            componentCategory: jo.componentCategory,
+            componentModel: jo.componentModel,
+            unitModel: jo.unitModel,
+            assembler: jo.assembler,
+            failedParameters: [{
+              parameterId: 'perf_ng',
+              parameterName: 'General Performance Anomaly',
+              actualValue: 'Failed',
+              standard: 'Pass',
+              defectDescription: payload.remarks || 'Component failed output / pressure standards'
+            }],
+            status: 'OPEN'
+          };
+          transaction.set(mriRef, {
+            ...mri,
+            createdAt: serverTimestamp()
+          });
+
+          if (wsRef && ws) {
+            transaction.update(wsRef, {
+              activeJoId: null,
+              activeAttemptId: null,
+              operationalState: 'RESERVED'
+            });
+          }
+
+          transaction.update(joRef, {
+            status: 'ALLOCATED',
+            hasMriB: true,
+            latestMriBId: mriId,
+            finalPerformanceResult: 'NOT_GOOD',
+            activeAttemptId: null,
+            updatedAt: serverTimestamp()
+          });
+        }
+      });
+    } catch (e: any) {
+      return { success: false, error: e.message || 'Gagal menyimpan submit performa ke server Firestore.' };
+    }
+
     attempt.measurements = payload.measurements;
     attempt.overallEvaluation = payload.overallEvaluation;
     attempt.remarks = payload.remarks;
@@ -902,24 +983,20 @@ class FirestoreDataStore {
     attempt.endedAt = now;
     attempt.result = payload.overallEvaluation;
 
-    if (isGood) {
-      generatedCert = generateTestCertificate(jo, attempt, ws?.name || 'Performance Bench');
+    if (isGood && generatedCert) {
       this.certificates[jo.id] = generatedCert;
-
       if (ws) {
         ws.activeJoId = undefined;
         ws.activeAttemptId = undefined;
         ws.currentQueue = (ws.currentQueue || []).filter((id) => id !== jo.id && id !== jo.joNumber);
         ws.operationalState = ws.currentQueue.length > 0 ? 'RESERVED' : 'AVAILABLE';
       }
-
       jo.status = 'DONE';
       jo.finalPerformanceResult = 'GOOD';
       jo.performanceCompletedAt = now;
       jo.certificateId = generatedCert.certificateNumber;
       jo.activeAttemptId = undefined;
     } else {
-      const mriId = `mri-b-${jo.id}-${Date.now()}`;
       const mri: MriRecord = {
         id: mriId,
         mriType: 'MRI-B',
@@ -940,13 +1017,11 @@ class FirestoreDataStore {
         status: 'OPEN'
       };
       this.mriRecords.unshift(mri);
-
       if (ws) {
         ws.activeJoId = undefined;
         ws.activeAttemptId = undefined;
         ws.operationalState = 'RESERVED';
       }
-
       jo.status = 'ALLOCATED';
       jo.hasMriB = true;
       jo.latestMriBId = mriId;
@@ -954,53 +1029,6 @@ class FirestoreDataStore {
       jo.activeAttemptId = undefined;
     }
     jo.updatedAt = now;
-
-    if (!this.isQuotaExhausted) {
-      try {
-        const attRef = doc(firestoreDb, 'testingAttempts', attemptId);
-        const joRef = doc(firestoreDb, 'jobOrders', jo.id);
-        const wsRef = ws ? doc(firestoreDb, 'workstations', ws.id) : undefined;
-
-        await runTransaction(firestoreDb, async (transaction) => {
-          transaction.update(attRef, {
-            measurements: payload.measurements,
-            overallEvaluation: payload.overallEvaluation,
-            remarks: payload.remarks || '',
-            evidencePhotos: payload.evidencePhotos || [],
-            endedAt: serverTimestamp(),
-            result: payload.overallEvaluation
-          });
-
-          if (isGood && generatedCert) {
-            const certRef = doc(firestoreDb, 'certificates', `cert-${jo.id}`);
-            transaction.set(certRef, {
-              ...generatedCert,
-              issuedAt: serverTimestamp()
-            });
-
-            if (wsRef && ws) {
-              transaction.update(wsRef, {
-                activeJoId: null,
-                activeAttemptId: null,
-                currentQueue: ws.currentQueue,
-                operationalState: ws.operationalState
-              });
-            }
-
-            transaction.update(joRef, {
-              status: 'DONE',
-              finalPerformanceResult: 'GOOD',
-              performanceCompletedAt: serverTimestamp(),
-              certificateId: generatedCert.certificateNumber,
-              activeAttemptId: null,
-              updatedAt: serverTimestamp()
-            });
-          }
-        });
-      } catch (e: any) {
-        this.handleCloudError(e, 'submitPerformanceAttempt');
-      }
-    }
 
     await this.logAudit('SUBMIT_PERFORMANCE', 'TestingAttempt', attemptId, terminalId, 'PERF_OPERATOR', undefined, { outcome: payload.overallEvaluation });
     this.notify();
