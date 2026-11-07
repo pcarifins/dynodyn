@@ -72,7 +72,7 @@ export const WorkstationBentoGrid: React.FC<WorkstationBentoGridProps> = ({ term
     db.reorderWorkstationQueue(ws.id, newQueue, terminalId);
   };
 
-  const handleExecuteTransfer = (e: React.FormEvent) => {
+  const handleExecuteTransfer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!transferJo || !transferTargetWs) return;
 
@@ -81,7 +81,7 @@ export const WorkstationBentoGrid: React.FC<WorkstationBentoGridProps> = ({ term
       return;
     }
 
-    const res = db.controlledTransferJobOrder(
+    const res = await db.controlledTransferJobOrder(
       transferJo.id,
       transferTargetWs,
       transferReason.trim() || 'Manual supervisor transfer',
@@ -97,7 +97,7 @@ export const WorkstationBentoGrid: React.FC<WorkstationBentoGridProps> = ({ term
     }
   };
 
-  const handleExecuteAvailabilityChange = (e: React.FormEvent) => {
+  const handleExecuteAvailabilityChange = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!availabilityWs) return;
 
@@ -106,7 +106,7 @@ export const WorkstationBentoGrid: React.FC<WorkstationBentoGridProps> = ({ term
       return;
     }
 
-    const res = db.setWorkstationAvailability(
+    const res = await db.setWorkstationAvailability(
       availabilityWs.id,
       availabilityState,
       availabilityReason.trim(),
@@ -369,24 +369,27 @@ export const WorkstationBentoGrid: React.FC<WorkstationBentoGridProps> = ({ term
                 {/* Footer Quick Assign from Unallocated Pool */}
                 <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
                   <span>Utilisasi: {station.currentLoadPercent || (queueItems.length * 25)}%</span>
-                  {unallocatedJobs.length > 0 && isAvailable && (
-                    <button
-                      onClick={() => {
-                        const compatibleJo = unallocatedJobs.find((j) =>
-                          isWorkstationCompatible(j.componentCategory, station)
-                        );
-                        if (compatibleJo) {
-                          db.allocateJobOrder(compatibleJo.id, station.id, terminalId);
-                        } else {
-                          alert(`Tidak ada JO yang kompatibel di Unallocated Pool untuk ${station.name}`);
-                        }
-                      }}
-                      className="text-xs font-semibold text-slate-900 hover:underline flex items-center gap-1 cursor-pointer"
-                    >
-                      <Plus className="w-3 h-3" />
-                      <span>Tarik JO</span>
-                    </button>
-                  )}
+                    {unallocatedJobs.length > 0 && isAvailable && (
+                      <button
+                        onClick={async () => {
+                          const compatibleJo = unallocatedJobs.find((j) =>
+                            isWorkstationCompatible(j.componentCategory, station)
+                          );
+                          if (compatibleJo) {
+                            const res = await db.allocateJobOrder(compatibleJo.id, station.id, terminalId);
+                            if (!res.success) {
+                              alert(res.error || 'Gagal mengalokasikan JO');
+                            }
+                          } else {
+                            alert(`Tidak ada JO yang kompatibel di Unallocated Pool untuk ${station.name}`);
+                          }
+                        }}
+                        className="text-xs font-semibold text-slate-900 hover:underline flex items-center gap-1 cursor-pointer"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>Tarik JO</span>
+                      </button>
+                    )}
                 </div>
               </div>
             );

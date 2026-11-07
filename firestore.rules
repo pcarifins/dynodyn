@@ -1,0 +1,116 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // 1. Job Orders Collection
+    match /jobOrders/{joId} {
+      allow read: if true;
+      allow create: if isValidId(joId)
+        && incoming().id == joId
+        && incoming().joNumber is string
+        && incoming().joNumber.size() <= 64
+        && incoming().componentCategory is string
+        && incoming().status in ['WAITING_GLT', 'IN_GLT', 'READY_FOR_ALLOCATION', 'ALLOCATED', 'IN_PERFORMANCE', 'DONE', 'CANCELLED'];
+      allow update: if isValidId(joId)
+        && incoming().id == existing().id
+        && incoming().joNumber == existing().joNumber
+        && incoming().status in ['WAITING_GLT', 'IN_GLT', 'READY_FOR_ALLOCATION', 'ALLOCATED', 'IN_PERFORMANCE', 'DONE', 'CANCELLED'];
+      allow delete: if false;
+    }
+
+    // 2. Workstations Collection
+    match /workstations/{workstationId} {
+      allow read: if true;
+      allow create, update: if isValidId(workstationId)
+        && incoming().id == workstationId
+        && incoming().operationalState in ['AVAILABLE', 'RESERVED', 'ACTIVE_TESTING', 'TESTING']
+        && incoming().availabilityState in ['ENABLED', 'BREAKDOWN', 'MAINTENANCE'];
+      allow delete: if false;
+    }
+
+    // 3. Testing Attempts Collection
+    match /testingAttempts/{attemptId} {
+      allow read: if true;
+      allow create: if isValidId(attemptId)
+        && incoming().id == attemptId
+        && incoming().joId is string
+        && incoming().stage in ['GLT', 'PERFORMANCE'];
+      allow update: if isValidId(attemptId)
+        && incoming().id == existing().id
+        && incoming().joId == existing().joId
+        && incoming().stage == existing().stage;
+      allow delete: if false;
+    }
+
+    // 4. MRI Records Collection
+    match /mriRecords/{mriId} {
+      allow read: if true;
+      allow create: if isValidId(mriId)
+        && incoming().id == mriId
+        && incoming().mriType in ['MRI-A', 'MRI-B']
+        && incoming().status in ['OPEN', 'RESOLVED'];
+      allow update: if isValidId(mriId)
+        && incoming().id == existing().id
+        && incoming().mriType == existing().mriType
+        && incoming().status in ['OPEN', 'RESOLVED'];
+      allow delete: if false;
+    }
+
+    // 5. Test Certificates Collection
+    match /certificates/{certId} {
+      allow read: if true;
+      allow create: if isValidId(certId)
+        && incoming().id == certId
+        && incoming().isValid is bool;
+      allow update: if isValidId(certId)
+        && incoming().id == existing().id
+        && incoming().certificateNumber == existing().certificateNumber;
+      allow delete: if false;
+    }
+
+    // 6. Audit Events (Immutable Append-Only Log)
+    match /auditEvents/{eventId} {
+      allow read: if true;
+      allow create: if isValidId(eventId)
+        && incoming().id == eventId
+        && incoming().action is string;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // 7. Checksheet Templates Collection
+    match /checksheetTemplates/{templateId} {
+      allow read: if true;
+      allow create, update: if isValidId(templateId)
+        && incoming().id == templateId
+        && incoming().version is number;
+      allow delete: if false;
+    }
+
+    // 8. System Configurations Collection
+    match /systemConfigs/{configId} {
+      allow read: if true;
+      allow create, update: if isValidId(configId)
+        && incoming().id == configId;
+      allow delete: if false;
+    }
+  }
+}

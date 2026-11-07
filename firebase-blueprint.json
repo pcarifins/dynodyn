@@ -1,0 +1,206 @@
+{
+  "entities": {
+    "JobOrder": {
+      "title": "JobOrder",
+      "description": "Manufacturing Job Order flowing through Quality Gate and Performance Testing",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "joNumber": { "type": "string", "maxLength": 64 },
+        "componentCategory": { "type": "string", "maxLength": 100 },
+        "componentModel": { "type": "string", "maxLength": 200 },
+        "unitModel": { "type": "string", "maxLength": 200 },
+        "assembler": { "type": "string", "maxLength": 100 },
+        "assemblyDate": { "type": "string", "maxLength": 64 },
+        "receivedAt": { "type": "string", "maxLength": 64 },
+        "receivingTerminalId": { "type": "string", "maxLength": 32 },
+        "status": { "type": "string", "enum": ["WAITING_GLT", "IN_GLT", "READY_FOR_ALLOCATION", "ALLOCATED", "IN_PERFORMANCE", "DONE", "CANCELLED"] },
+        "currentCycleId": { "type": "string", "maxLength": 64 },
+        "finalGltResult": { "type": "string", "enum": ["GOOD", "NOT_GOOD"] },
+        "gltCompletedAt": { "type": "string", "maxLength": 64 },
+        "gltLeadtimeDisplay": { "type": "string", "maxLength": 32 },
+        "approvedWorkstationId": { "type": "string", "maxLength": 32 },
+        "allocatedAt": { "type": "string", "maxLength": 64 },
+        "queueSequence": { "type": "number" },
+        "isUrgent": { "type": "boolean" },
+        "agingHours": { "type": "number" },
+        "slaLimitHours": { "type": "number" },
+        "finalPerformanceResult": { "type": "string", "enum": ["GOOD", "NOT_GOOD"] },
+        "performanceStartedAt": { "type": "string", "maxLength": 64 },
+        "performanceCompletedAt": { "type": "string", "maxLength": 64 },
+        "hasMriA": { "type": "boolean" },
+        "hasMriB": { "type": "boolean" },
+        "latestMriAId": { "type": "string", "maxLength": 64 },
+        "latestMriBId": { "type": "string", "maxLength": 64 },
+        "activeAttemptId": { "type": "string", "maxLength": 64 },
+        "certificateId": { "type": "string", "maxLength": 64 },
+        "certificateGeneratedAt": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "joNumber", "componentCategory", "componentModel", "unitModel", "assembler", "status", "currentCycleId"]
+    },
+    "Workstation": {
+      "title": "Workstation",
+      "description": "Performance testing bay or bench station status and active queue",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 32 },
+        "name": { "type": "string", "maxLength": 64 },
+        "type": { "type": "string", "enum": ["Dyno", "Bench"] },
+        "category": { "type": "string", "enum": ["ENGINE", "POWER_TRAIN", "CYLINDER"] },
+        "operationalState": { "type": "string", "enum": ["AVAILABLE", "RESERVED", "TESTING"] },
+        "availabilityState": { "type": "string", "enum": ["ENABLED", "BREAKDOWN", "MAINTENANCE"] },
+        "breakdownReason": { "type": "string", "maxLength": 500 },
+        "activeJoId": { "type": "string", "maxLength": 64 },
+        "activeAttemptId": { "type": "string", "maxLength": 64 },
+        "currentQueue": { "type": "array" },
+        "currentLoadPercent": { "type": "number" }
+      },
+      "required": ["id", "name", "type", "category", "operationalState", "availabilityState"]
+    },
+    "TestingAttempt": {
+      "title": "TestingAttempt",
+      "description": "Immutable testing execution attempt record for GLT or Performance stage",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "joId": { "type": "string", "maxLength": 64 },
+        "cycleId": { "type": "string", "maxLength": 64 },
+        "stage": { "type": "string", "enum": ["GLT", "PERFORMANCE"] },
+        "attemptNumber": { "type": "number" },
+        "workstationId": { "type": "string", "maxLength": 32 },
+        "terminalId": { "type": "string", "maxLength": 32 },
+        "startedAt": { "type": "string", "maxLength": 64 },
+        "endedAt": { "type": "string", "maxLength": 64 },
+        "result": { "type": "string", "enum": ["GOOD", "NOT_GOOD", "ABORTED"] },
+        "checksheetVersionId": { "type": "string", "maxLength": 64 },
+        "standardDurationMinutes": { "type": "number" },
+        "overallEvaluation": { "type": "string", "enum": ["GOOD", "NOT_GOOD"] },
+        "remarks": { "type": "string", "maxLength": 2000 },
+        "abortReason": { "type": "string", "maxLength": 1000 },
+        "abortedByRole": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "joId", "cycleId", "stage", "terminalId", "startedAt"]
+    },
+    "MriRecord": {
+      "title": "MriRecord",
+      "description": "Multi-Defect MRI Record for GLT (MRI-A) or Performance (MRI-B) failures",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "mriType": { "type": "string", "enum": ["MRI-A", "MRI-B"] },
+        "joId": { "type": "string", "maxLength": 64 },
+        "attemptId": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "componentCategory": { "type": "string", "maxLength": 100 },
+        "componentModel": { "type": "string", "maxLength": 200 },
+        "unitModel": { "type": "string", "maxLength": 200 },
+        "assembler": { "type": "string", "maxLength": 100 },
+        "failedParameters": { "type": "array" },
+        "generalCorrectiveAction": { "type": "string", "maxLength": 2000 },
+        "correctiveActionCompletedAt": { "type": "string", "maxLength": 64 },
+        "status": { "type": "string", "enum": ["OPEN", "RESOLVED"] }
+      },
+      "required": ["id", "mriType", "joId", "attemptId", "createdAt", "status"]
+    },
+    "TestCertificate": {
+      "title": "TestCertificate",
+      "description": "Official automatic test certificate metadata and digital verification",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "joId": { "type": "string", "maxLength": 64 },
+        "joNumber": { "type": "string", "maxLength": 64 },
+        "attemptId": { "type": "string", "maxLength": 64 },
+        "certificateNumber": { "type": "string", "maxLength": 64 },
+        "issuedAt": { "type": "string", "maxLength": 64 },
+        "componentCategory": { "type": "string", "maxLength": 100 },
+        "componentModel": { "type": "string", "maxLength": 200 },
+        "unitModel": { "type": "string", "maxLength": 200 },
+        "assembler": { "type": "string", "maxLength": 100 },
+        "workstationName": { "type": "string", "maxLength": 64 },
+        "testDate": { "type": "string", "maxLength": 32 },
+        "finalResult": { "type": "string", "enum": ["GOOD"] },
+        "checksheetVersion": { "type": "number" },
+        "totalChecks": { "type": "number" },
+        "isValid": { "type": "boolean" }
+      },
+      "required": ["id", "joId", "joNumber", "certificateNumber", "issuedAt", "isValid"]
+    },
+    "AuditEvent": {
+      "title": "AuditEvent",
+      "description": "Immutable security and operational event audit trail",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "action": { "type": "string", "maxLength": 64 },
+        "targetEntity": { "type": "string", "maxLength": 64 },
+        "targetId": { "type": "string", "maxLength": 64 },
+        "terminalId": { "type": "string", "maxLength": 32 },
+        "role": { "type": "string", "maxLength": 32 },
+        "timestamp": { "type": "string", "maxLength": 64 },
+        "reason": { "type": "string", "maxLength": 1000 }
+      },
+      "required": ["id", "action", "targetEntity", "targetId", "terminalId", "role", "timestamp"]
+    },
+    "ChecksheetTemplate": {
+      "title": "ChecksheetTemplate",
+      "description": "Quality Master technical standard template",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "componentCategory": { "type": "string", "maxLength": 100 },
+        "version": { "type": "number" },
+        "publishedAt": { "type": "string", "maxLength": 64 },
+        "isPublished": { "type": "boolean" },
+        "fixedStandardDurationMinutes": { "type": "number" },
+        "slaTargetHours": { "type": "number" }
+      },
+      "required": ["id", "componentCategory", "version", "isPublished"]
+    },
+    "SystemConfig": {
+      "title": "SystemConfig",
+      "description": "Global operational calendars, AI Dispatch weights and SLA configurations",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 32 }
+      },
+      "required": ["id"]
+    }
+  },
+  "firestore": {
+    "/jobOrders/{joId}": {
+      "schema": { "$ref": "#/entities/JobOrder" },
+      "description": "Central collection of Job Orders"
+    },
+    "/workstations/{workstationId}": {
+      "schema": { "$ref": "#/entities/Workstation" },
+      "description": "Workstation bays, benches and queues"
+    },
+    "/testingAttempts/{attemptId}": {
+      "schema": { "$ref": "#/entities/TestingAttempt" },
+      "description": "Immutable testing execution records"
+    },
+    "/mriRecords/{mriId}": {
+      "schema": { "$ref": "#/entities/MriRecord" },
+      "description": "Defect MRI-A and MRI-B logs"
+    },
+    "/certificates/{certId}": {
+      "schema": { "$ref": "#/entities/TestCertificate" },
+      "description": "Official Test Certificates metadata"
+    },
+    "/auditEvents/{eventId}": {
+      "schema": { "$ref": "#/entities/AuditEvent" },
+      "description": "Security and transaction audit trail"
+    },
+    "/checksheetTemplates/{templateId}": {
+      "schema": { "$ref": "#/entities/ChecksheetTemplate" },
+      "description": "Quality Master checksheet standards"
+    },
+    "/systemConfigs/{configId}": {
+      "schema": { "$ref": "#/entities/SystemConfig" },
+      "description": "SLA calendar and AI Dispatch weight configurations"
+    }
+  }
+}

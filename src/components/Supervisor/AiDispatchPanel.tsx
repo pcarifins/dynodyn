@@ -58,17 +58,17 @@ export const AiDispatchPanel: React.FC<AiDispatchPanelProps> = ({ terminalId }) 
     return true;
   });
 
-  const handleApplyAllocation = (rec: AiRecommendation) => {
-    const res = db.allocateJobOrder(rec.joId, rec.recommendedWorkstationId, terminalId);
+  const handleApplyAllocation = async (rec: AiRecommendation) => {
+    const res = await db.allocateJobOrder(rec.joId, rec.recommendedWorkstationId, terminalId);
     if (!res.success) {
       alert(res.error || 'Gagal menerapkan alokasi');
     }
   };
 
-  const handleApplyAll = () => {
+  const handleApplyAll = async () => {
     let successCount = 0;
     for (const rec of filteredRecs) {
-      const res = db.allocateJobOrder(rec.joId, rec.recommendedWorkstationId, terminalId);
+      const res = await db.allocateJobOrder(rec.joId, rec.recommendedWorkstationId, terminalId);
       if (res.success) successCount++;
     }
     alert(`Berhasil menerapkan ${successCount} alokasi cerdas AI.`);

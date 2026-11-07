@@ -40,6 +40,7 @@ export const ChecksheetModal: React.FC<ChecksheetModalProps> = ({
   const [evidencePhotos, setEvidencePhotos] = useState<string[]>([]);
   const [error, setError] = useState('');
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Timer for elapsed testing duration
   useEffect(() => {
@@ -148,8 +149,13 @@ export const ChecksheetModal: React.FC<ChecksheetModalProps> = ({
     return val !== '' && val !== undefined && val !== null;
   }).length;
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     setError('');
+
+    if (!navigator.onLine) {
+      setError('Koneksi offline: Tidak dapat submit checksheet saat perangkat offline. Pastikan tersambung ke jaringan.');
+      return;
+    }
 
     // Verify all mandatory parameters
     const missingMandatory = allParams.filter((p) => {
@@ -195,43 +201,50 @@ export const ChecksheetModal: React.FC<ChecksheetModalProps> = ({
       };
     });
 
-    if (attempt.stage === 'GLT') {
-      const res = db.submitGltAttempt(
-        attempt.id,
-        {
-          measurements: measurementPayloads,
-          overallEvaluation,
-          remarks,
-          evidencePhotos
-        },
-        terminalId
-      );
-      if (res.success) {
-        db.clearDraft(`${attempt.id}_draft`);
-        onSuccess();
-        onClose();
+    setIsSubmitting(true);
+    try {
+      if (attempt.stage === 'GLT') {
+        const res = await db.submitGltAttempt(
+          attempt.id,
+          {
+            measurements: measurementPayloads,
+            overallEvaluation,
+            remarks,
+            evidencePhotos
+          },
+          terminalId
+        );
+        if (res.success) {
+          db.clearDraft(`${attempt.id}_draft`);
+          onSuccess();
+          onClose();
+        } else {
+          setError(res.error || 'Gagal submit GLT checksheet');
+        }
       } else {
-        setError(res.error || 'Gagal submit GLT checksheet');
+        // Performance attempt
+        const res = await db.submitPerformanceAttempt(
+          attempt.id,
+          {
+            measurements: measurementPayloads,
+            overallEvaluation,
+            remarks,
+            evidencePhotos
+          },
+          terminalId
+        );
+        if (res.success) {
+          db.clearDraft(`${attempt.id}_draft`);
+          onSuccess();
+          onClose();
+        } else {
+          setError(res.error || 'Gagal submit Performance checksheet');
+        }
       }
-    } else {
-      // Performance attempt
-      const res = db.submitPerformanceAttempt(
-        attempt.id,
-        {
-          measurements: measurementPayloads,
-          overallEvaluation,
-          remarks,
-          evidencePhotos
-        },
-        terminalId
-      );
-      if (res.success) {
-        db.clearDraft(`${attempt.id}_draft`);
-        onSuccess();
-        onClose();
-      } else {
-        setError(res.error || 'Gagal submit Performance checksheet');
-      }
+    } catch (e: any) {
+      setError(e.message || 'Terjadi kesalahan sistem saat submit checksheet');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -556,10 +569,11 @@ export const ChecksheetModal: React.FC<ChecksheetModalProps> = ({
             <button
               type="button"
               onClick={handleSubmit}
-              className="px-5 py-2 text-xs font-semibold text-white bg-slate-700 hover:bg-slate-800 rounded-xl shadow-xs transition-colors flex items-center gap-2 cursor-pointer"
+              disabled={isSubmitting}
+              className="px-5 py-2 text-xs font-semibold text-white bg-slate-700 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl shadow-xs transition-colors flex items-center gap-2 cursor-pointer"
             >
               <CheckCircle2 className="w-4 h-4" />
-              <span>Submit Checksheet</span>
+              <span>{isSubmitting ? 'Menyimpan ke Cloud...' : 'Submit Checksheet'}</span>
             </button>
           </div>
         </div>

@@ -27,7 +27,7 @@ export const MriModal: React.FC<MriModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleSaveAction = (e: React.FormEvent) => {
+  const handleSaveAction = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -36,7 +36,7 @@ export const MriModal: React.FC<MriModalProps> = ({
       return;
     }
 
-    const res = db.recordCorrectiveAction(
+    const res = await db.recordCorrectiveAction(
       mriRecord.id,
       correctiveActionRemark,
       terminalId,

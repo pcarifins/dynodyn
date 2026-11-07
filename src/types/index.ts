@@ -53,7 +53,7 @@ export type JobStatus =
 
 export type TestResult = 'GOOD' | 'NOT_GOOD' | 'ABORTED';
 
-export type WorkstationOperationalState = 'AVAILABLE' | 'RESERVED' | 'TESTING';
+export type WorkstationOperationalState = 'AVAILABLE' | 'RESERVED' | 'TESTING' | 'ACTIVE_TESTING';
 export type WorkstationAvailabilityState = 'ENABLED' | 'BREAKDOWN' | 'MAINTENANCE';
 
 export interface Workstation {

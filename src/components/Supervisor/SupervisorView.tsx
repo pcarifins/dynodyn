@@ -64,11 +64,11 @@ export const SupervisorView: React.FC<SupervisorViewProps> = ({
   const nextGltJo = jobOrders.find((j) => j.status === 'WAITING_GLT');
   const nextPerfJo = jobOrders.find((j) => j.status === 'ALLOCATED' && j.isUrgent) || jobOrders.find((j) => j.status === 'ALLOCATED');
 
-  const handleExecuteReopen = (e: React.FormEvent) => {
+  const handleExecuteReopen = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!reopenTargetJo || !reopenReason.trim()) return;
 
-    const res = db.reopenJobOrder(reopenTargetJo.id, reopenStage, reopenReason.trim(), currentTerminal.id);
+    const res = await db.reopenJobOrder(reopenTargetJo.id, reopenStage, reopenReason.trim(), currentTerminal.id);
     if (res.success) {
       setReopenTargetJo(null);
       setReopenReason('');
@@ -77,11 +77,11 @@ export const SupervisorView: React.FC<SupervisorViewProps> = ({
     }
   };
 
-  const handleExecuteCancel = (e: React.FormEvent) => {
+  const handleExecuteCancel = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!cancelTargetJo || !cancelReason.trim()) return;
 
-    const res = db.cancelJobOrder(cancelTargetJo.id, cancelReason.trim(), currentTerminal.id);
+    const res = await db.cancelJobOrder(cancelTargetJo.id, cancelReason.trim(), currentTerminal.id);
     if (res.success) {
       setCancelTargetJo(null);
       setCancelReason('');

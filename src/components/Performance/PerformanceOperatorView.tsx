@@ -51,13 +51,13 @@ export const PerformanceOperatorView: React.FC<PerformanceOperatorViewProps> = (
 
   const totalMriCount = assignedJobs.filter((j) => j.hasMriB).length;
 
-  const handleStartTest = (jo: JobOrder) => {
+  const handleStartTest = async (jo: JobOrder) => {
     const existingAttempt = db.getActiveAttempt(ws.id, jo.id);
     if (existingAttempt) {
       setActiveAttempt(existingAttempt);
       setActiveChecksheetJo(jo);
     } else {
-      const res = db.startPerformanceAttempt(jo.id, ws.id, currentTerminal.id);
+      const res = await db.startPerformanceAttempt(jo.id, ws.id, currentTerminal.id);
       if (res.success && res.attempt) {
         setActiveAttempt(res.attempt);
         setActiveChecksheetJo(jo);

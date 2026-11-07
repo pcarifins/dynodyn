@@ -57,13 +57,13 @@ export const GltOperatorView: React.FC<GltOperatorViewProps> = ({ currentTermina
   const waitingChecksheetCount = currentQueue.length;
   const totalMriCount = scopedJobs.filter((j) => j.hasMriA).length;
 
-  const handleStartChecksheet = (jo: JobOrder) => {
+  const handleStartChecksheet = async (jo: JobOrder) => {
     const existingAttempt = db.getActiveAttempt(undefined, jo.id);
     if (existingAttempt) {
       setActiveAttempt(existingAttempt);
       setActiveChecksheetJo(jo);
     } else {
-      const res = db.startGltAttempt(jo.id, currentTerminal.id);
+      const res = await db.startGltAttempt(jo.id, currentTerminal.id);
       if (res.success && res.attempt) {
         setActiveAttempt(res.attempt);
         setActiveChecksheetJo(jo);

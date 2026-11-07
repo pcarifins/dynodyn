@@ -1,4 +1,18 @@
 import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  setDoc,
+  updateDoc,
+  runTransaction,
+  onSnapshot,
+  query,
+  where,
+  writeBatch
+} from 'firebase/firestore';
+import { firestoreDb, auth, ensureAuthenticated } from './firebase';
+import {
   JobOrder,
   Workstation,
   TestingAttempt,
@@ -7,15 +21,25 @@ import {
   AuditEvent,
   ChecksheetTemplate,
   WorkingCalendarConfig,
-  AiDispatchWeights,
-  TerminalId
+  AiDispatchWeights
 } from '../types';
 import { INITIAL_JOB_ORDERS, INITIAL_WORKSTATIONS, INITIAL_WORKING_CALENDAR } from '../data/seedData';
 import { INITIAL_CHECKSHEET_TEMPLATES } from '../data/checksheetTemplates';
 import { DEFAULT_AI_WEIGHTS } from './aiDispatch';
 import { generateTestCertificate } from './certificateGenerator';
 
-class DataStore {
+function isOnline(): boolean {
+  if (typeof navigator !== 'undefined' && typeof navigator.onLine === 'boolean') {
+    return navigator.onLine;
+  }
+  return true;
+}
+
+function sanitizeDocId(key: string): string {
+  return key.replace(/[\/\s]/g, '_');
+}
+
+class FirestoreDataStore {
   private jobOrders: JobOrder[] = [];
   private workstations: Workstation[] = [];
   private attempts: TestingAttempt[] = [];
@@ -25,65 +49,279 @@ class DataStore {
   private checksheetTemplates: Record<string, ChecksheetTemplate> = {};
   private workingCalendar: WorkingCalendarConfig = INITIAL_WORKING_CALENDAR;
   private aiWeights: AiDispatchWeights = DEFAULT_AI_WEIGHTS;
+
   private listeners: Set<() => void> = new Set();
+  private isInitialized = false;
+  private hasSeeded = false;
+  private isQuotaExhausted = false;
+  private unsubscribers: (() => void)[] = [];
+  private draftStore: Record<string, any> = {};
+
+  private handleCloudError(e: any, context: string) {
+    if (e?.message && (e.message.includes('RESOURCE_EXHAUSTED') || e.message.includes('Quota limit exceeded'))) {
+      this.isQuotaExhausted = true;
+    }
+    console.warn(`Firestore ${context} note:`, e?.message || e);
+  }
 
   constructor() {
-    this.loadFromStorage();
+    this.loadPersistentCache();
+    this.init();
   }
 
-  private loadFromStorage() {
+  private loadPersistentCache() {
     try {
-      const storedJOs = localStorage.getItem('dynodyn_job_orders');
-      this.jobOrders = storedJOs ? JSON.parse(storedJOs) : [...INITIAL_JOB_ORDERS];
-
-      const storedWs = localStorage.getItem('dynodyn_workstations');
-      this.workstations = storedWs ? JSON.parse(storedWs) : [...INITIAL_WORKSTATIONS];
-
-      const storedAttempts = localStorage.getItem('dynodyn_attempts');
-      this.attempts = storedAttempts ? JSON.parse(storedAttempts) : [];
-
-      const storedMris = localStorage.getItem('dynodyn_mris');
-      this.mriRecords = storedMris ? JSON.parse(storedMris) : [];
-
-      const storedCerts = localStorage.getItem('dynodyn_certificates');
-      this.certificates = storedCerts ? JSON.parse(storedCerts) : {};
-
-      const storedAudits = localStorage.getItem('dynodyn_audits');
-      this.auditEvents = storedAudits ? JSON.parse(storedAudits) : [];
-
-      const storedTpls = localStorage.getItem('dynodyn_checksheet_templates');
-      this.checksheetTemplates = storedTpls ? JSON.parse(storedTpls) : { ...INITIAL_CHECKSHEET_TEMPLATES };
-
-      const storedCal = localStorage.getItem('dynodyn_calendar');
-      this.workingCalendar = storedCal ? JSON.parse(storedCal) : INITIAL_WORKING_CALENDAR;
-
-      const storedWeights = localStorage.getItem('dynodyn_ai_weights');
-      this.aiWeights = storedWeights ? JSON.parse(storedWeights) : DEFAULT_AI_WEIGHTS;
+      if (typeof localStorage !== 'undefined') {
+        const cachedJobs = localStorage.getItem('dynodyn_persist_jobOrders');
+        if (cachedJobs) this.jobOrders = JSON.parse(cachedJobs);
+        const cachedWs = localStorage.getItem('dynodyn_persist_workstations');
+        if (cachedWs) this.workstations = JSON.parse(cachedWs);
+        const cachedAtt = localStorage.getItem('dynodyn_persist_attempts');
+        if (cachedAtt) this.attempts = JSON.parse(cachedAtt);
+        const cachedMri = localStorage.getItem('dynodyn_persist_mriRecords');
+        if (cachedMri) this.mriRecords = JSON.parse(cachedMri);
+        const cachedCert = localStorage.getItem('dynodyn_persist_certificates');
+        if (cachedCert) this.certificates = JSON.parse(cachedCert);
+        const cachedAud = localStorage.getItem('dynodyn_persist_auditEvents');
+        if (cachedAud) this.auditEvents = JSON.parse(cachedAud);
+      }
     } catch (e) {
-      console.warn('Fallback to initial seed data due to storage error:', e);
+      console.warn('Could not load persistent cache:', e);
+    }
+
+    if (this.jobOrders.length === 0) {
       this.jobOrders = [...INITIAL_JOB_ORDERS];
+    }
+    if (this.workstations.length === 0) {
       this.workstations = [...INITIAL_WORKSTATIONS];
-      this.checksheetTemplates = { ...INITIAL_CHECKSHEET_TEMPLATES };
-      this.workingCalendar = INITIAL_WORKING_CALENDAR;
-      this.aiWeights = DEFAULT_AI_WEIGHTS;
     }
   }
 
-  private persist() {
+  private savePersistentCache() {
     try {
-      localStorage.setItem('dynodyn_job_orders', JSON.stringify(this.jobOrders));
-      localStorage.setItem('dynodyn_workstations', JSON.stringify(this.workstations));
-      localStorage.setItem('dynodyn_attempts', JSON.stringify(this.attempts));
-      localStorage.setItem('dynodyn_mris', JSON.stringify(this.mriRecords));
-      localStorage.setItem('dynodyn_certificates', JSON.stringify(this.certificates));
-      localStorage.setItem('dynodyn_audits', JSON.stringify(this.auditEvents));
-      localStorage.setItem('dynodyn_checksheet_templates', JSON.stringify(this.checksheetTemplates));
-      localStorage.setItem('dynodyn_calendar', JSON.stringify(this.workingCalendar));
-      localStorage.setItem('dynodyn_ai_weights', JSON.stringify(this.aiWeights));
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('dynodyn_persist_jobOrders', JSON.stringify(this.jobOrders));
+        localStorage.setItem('dynodyn_persist_workstations', JSON.stringify(this.workstations));
+        localStorage.setItem('dynodyn_persist_attempts', JSON.stringify(this.attempts));
+        localStorage.setItem('dynodyn_persist_mriRecords', JSON.stringify(this.mriRecords));
+        localStorage.setItem('dynodyn_persist_certificates', JSON.stringify(this.certificates));
+        localStorage.setItem('dynodyn_persist_auditEvents', JSON.stringify(this.auditEvents));
+      }
+    } catch {}
+  }
+
+  public async init(): Promise<void> {
+    if (this.isInitialized) return;
+    this.isInitialized = true;
+
+    try {
+      await ensureAuthenticated();
+      this.setupRealtimeListeners();
     } catch (e) {
-      console.error('Failed to persist to localStorage', e);
+      console.warn('Firebase init error, fallback to persistent store:', e);
     }
-    this.notify();
+  }
+
+  private setupRealtimeListeners() {
+    // 1. Job Orders Listener
+    const joUnsub = onSnapshot(
+      collection(firestoreDb, 'jobOrders'),
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const jobs: JobOrder[] = [];
+          snapshot.forEach((docSnap) => {
+            jobs.push(docSnap.data() as JobOrder);
+          });
+          jobs.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+          this.jobOrders = jobs;
+          this.savePersistentCache();
+          this.notify();
+        } else if (!this.hasSeeded && this.jobOrders.length > 0) {
+          this.seedInitialData();
+        }
+      },
+      (error) => {
+        console.warn('Realtime listener note [jobOrders]:', error.message);
+      }
+    );
+    this.unsubscribers.push(joUnsub);
+
+    // 2. Workstations Listener
+    const wsUnsub = onSnapshot(
+      collection(firestoreDb, 'workstations'),
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const list: Workstation[] = [];
+          snapshot.forEach((docSnap) => {
+            list.push(docSnap.data() as Workstation);
+          });
+          const orderMap: Record<string, number> = {
+            D1: 1, D2: 2, D3: 3, TB1: 4, TB2: 5, TB3: 6, TB_CYL: 7, MB: 8
+          };
+          list.sort((a, b) => (orderMap[a.id] || 99) - (orderMap[b.id] || 99));
+          this.workstations = list;
+          this.savePersistentCache();
+          this.notify();
+        }
+      },
+      (error) => {
+        console.warn('Realtime listener note [workstations]:', error.message);
+      }
+    );
+    this.unsubscribers.push(wsUnsub);
+
+    // 3. Testing Attempts Listener
+    const attUnsub = onSnapshot(
+      collection(firestoreDb, 'testingAttempts'),
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const list: TestingAttempt[] = [];
+          snapshot.forEach((docSnap) => {
+            list.push(docSnap.data() as TestingAttempt);
+          });
+          this.attempts = list;
+          this.savePersistentCache();
+          this.notify();
+        }
+      },
+      (error) => {
+        console.warn('Realtime listener note [testingAttempts]:', error.message);
+      }
+    );
+    this.unsubscribers.push(attUnsub);
+
+    // 4. MRI Records Listener
+    const mriUnsub = onSnapshot(
+      collection(firestoreDb, 'mriRecords'),
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const list: MriRecord[] = [];
+          snapshot.forEach((docSnap) => {
+            list.push(docSnap.data() as MriRecord);
+          });
+          this.mriRecords = list;
+          this.savePersistentCache();
+          this.notify();
+        }
+      },
+      (error) => {
+        console.warn('Realtime listener note [mriRecords]:', error.message);
+      }
+    );
+    this.unsubscribers.push(mriUnsub);
+
+    // 5. Certificates Listener
+    const certUnsub = onSnapshot(
+      collection(firestoreDb, 'certificates'),
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const certMap: Record<string, TestCertificate> = {};
+          snapshot.forEach((docSnap) => {
+            const cert = docSnap.data() as TestCertificate;
+            certMap[cert.joId] = cert;
+          });
+          this.certificates = certMap;
+          this.savePersistentCache();
+          this.notify();
+        }
+      },
+      (error) => {
+        console.warn('Realtime listener note [certificates]:', error.message);
+      }
+    );
+    this.unsubscribers.push(certUnsub);
+
+    // 6. Audit Events Listener
+    const auditUnsub = onSnapshot(
+      collection(firestoreDb, 'auditEvents'),
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const list: AuditEvent[] = [];
+          snapshot.forEach((docSnap) => {
+            list.push(docSnap.data() as AuditEvent);
+          });
+          list.sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());
+          this.auditEvents = list;
+          this.savePersistentCache();
+          this.notify();
+        }
+      },
+      (error) => {
+        console.warn('Realtime listener note [auditEvents]:', error.message);
+      }
+    );
+    this.unsubscribers.push(auditUnsub);
+
+    // 7. Checksheet Templates Listener
+    const tplUnsub = onSnapshot(
+      collection(firestoreDb, 'checksheetTemplates'),
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const tplMap: Record<string, ChecksheetTemplate> = {};
+          snapshot.forEach((docSnap) => {
+            const tpl = docSnap.data() as ChecksheetTemplate;
+            tplMap[docSnap.id] = tpl;
+          });
+          this.checksheetTemplates = tplMap;
+          this.notify();
+        }
+      },
+      (error) => {
+        console.warn('Realtime listener note [checksheetTemplates]:', error.message);
+      }
+    );
+    this.unsubscribers.push(tplUnsub);
+
+    // 8. System Configs Listener
+    const cfgUnsub = onSnapshot(
+      collection(firestoreDb, 'systemConfigs'),
+      (snapshot) => {
+        snapshot.forEach((docSnap) => {
+          if (docSnap.id === 'calendar') {
+            this.workingCalendar = docSnap.data() as WorkingCalendarConfig;
+          } else if (docSnap.id === 'aiWeights') {
+            this.aiWeights = docSnap.data() as AiDispatchWeights;
+          }
+        });
+        this.notify();
+      },
+      (error) => {
+        console.warn('Realtime listener note [systemConfigs]:', error.message);
+      }
+    );
+    this.unsubscribers.push(cfgUnsub);
+  }
+
+  /**
+   * Seeds initial data into Firestore if empty on boot
+   */
+  private async seedInitialData() {
+    if (this.hasSeeded) return;
+    this.hasSeeded = true;
+
+    try {
+      const batch = writeBatch(firestoreDb);
+
+      for (const jo of INITIAL_JOB_ORDERS.slice(0, 5)) {
+        batch.set(doc(firestoreDb, 'jobOrders', jo.id), jo);
+      }
+
+      for (const ws of INITIAL_WORKSTATIONS) {
+        batch.set(doc(firestoreDb, 'workstations', ws.id), ws);
+      }
+
+      for (const [key, tpl] of Object.entries(INITIAL_CHECKSHEET_TEMPLATES)) {
+        batch.set(doc(firestoreDb, 'checksheetTemplates', sanitizeDocId(key)), tpl);
+      }
+
+      batch.set(doc(firestoreDb, 'systemConfigs', 'calendar'), INITIAL_WORKING_CALENDAR);
+      batch.set(doc(firestoreDb, 'systemConfigs', 'aiWeights'), DEFAULT_AI_WEIGHTS);
+
+      await batch.commit();
+      console.log('Seeded initial Firestore operational data successfully');
+    } catch (e) {
+      console.warn('Initial seeding note (quota or pending):', e);
+    }
   }
 
   public subscribe(listener: () => void): () => void {
@@ -95,23 +333,44 @@ class DataStore {
     this.listeners.forEach((l) => l());
   }
 
-  private logAudit(action: string, targetEntity: string, targetId: string, terminalId: string, role: string, reason?: string, details?: Record<string, unknown>) {
+  private async logAudit(
+    action: string,
+    targetEntity: string,
+    targetId: string,
+    terminalId: string,
+    role: string,
+    reason?: string,
+    details?: Record<string, unknown>
+  ): Promise<void> {
+    const eventId = `audit-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     const event: AuditEvent = {
-      id: `audit-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      id: eventId,
       action,
       targetEntity,
       targetId,
       terminalId,
       role,
-      timestamp: new Date().toISOString(),
       reason,
-      details
+      details,
+      timestamp: new Date().toISOString()
     };
+
     this.auditEvents.unshift(event);
+    this.savePersistentCache();
+
+    try {
+      await setDoc(doc(firestoreDb, 'auditEvents', eventId), event);
+    } catch (e) {
+      // Non-fatal if cloud write is throttled
+    }
   }
 
   // --- QUERY APIS ---
+
   public getJobOrders(): JobOrder[] {
+    if (this.jobOrders.length === 0) {
+      return [...INITIAL_JOB_ORDERS];
+    }
     return [...this.jobOrders];
   }
 
@@ -120,6 +379,9 @@ class DataStore {
   }
 
   public getWorkstations(): Workstation[] {
+    if (this.workstations.length === 0) {
+      return [...INITIAL_WORKSTATIONS];
+    }
     return [...this.workstations];
   }
 
@@ -155,18 +417,20 @@ class DataStore {
   }
 
   public getChecksheetTemplates(): Record<string, ChecksheetTemplate> {
+    if (Object.keys(this.checksheetTemplates).length === 0) {
+      return { ...INITIAL_CHECKSHEET_TEMPLATES };
+    }
     return { ...this.checksheetTemplates };
   }
 
   public getChecksheetTemplate(stage: 'GLT' | 'PERF', category: string): ChecksheetTemplate | undefined {
-    const key = `${stage}_${category}`;
-    if (this.checksheetTemplates[key]) {
-      return this.checksheetTemplates[key];
-    }
-    // Fallback search
+    const rawKey = `${stage}_${category}`;
+    const safeKey = sanitizeDocId(rawKey);
+    if (this.checksheetTemplates[safeKey]) return this.checksheetTemplates[safeKey];
+    if (this.checksheetTemplates[rawKey]) return this.checksheetTemplates[rawKey];
     return Object.values(this.checksheetTemplates).find(
       (t) => t.componentCategory.toLowerCase() === category.toLowerCase()
-    );
+    ) || INITIAL_CHECKSHEET_TEMPLATES[rawKey] || INITIAL_CHECKSHEET_TEMPLATES[Object.keys(INITIAL_CHECKSHEET_TEMPLATES).find(k => sanitizeDocId(k) === safeKey) || ''];
   }
 
   public getWorkingCalendar(): WorkingCalendarConfig {
@@ -177,12 +441,13 @@ class DataStore {
     return { ...this.aiWeights };
   }
 
-  // --- MUTATION ACTIONS WITH IMMUTABILITY & AUDITING ---
+  // --- ATOMIC MUTATION TRANSACTIONS ---
 
   /**
-   * GLT Receive New JO
+   * TASK 2: Atomic Server-Validated JO Receiving Transaction
+   * Prevents duplicate JO submissions across multiple devices.
    */
-  public receiveJobOrder(
+  public async receiveJobOrder(
     data: {
       joNumber: string;
       componentCategory: any;
@@ -192,16 +457,24 @@ class DataStore {
       assemblyDate: string;
     },
     terminalId: string
-  ): { success: boolean; error?: string; jobOrder?: JobOrder } {
-    // Check uniqueness
-    if (this.jobOrders.some((j) => j.joNumber.trim() === data.joNumber.trim())) {
-      return { success: false, error: `Job Order number ${data.joNumber} already exists in system.` };
+  ): Promise<{ success: boolean; error?: string; jobOrder?: JobOrder }> {
+    if (!isOnline()) {
+      return { success: false, error: 'Tidak dapat mendaftarkan JO saat offline. Periksa koneksi internet.' };
     }
 
+    const cleanJoNum = data.joNumber.trim();
+    // Unique check across existing database records
+    if (this.jobOrders.some((j) => j.joNumber.toLowerCase() === cleanJoNum.toLowerCase())) {
+      return { success: false, error: `Job Order number ${cleanJoNum} already exists in database.` };
+    }
+
+    const joId = `jo-${cleanJoNum}`;
+    const joRef = doc(firestoreDb, 'jobOrders', joId);
     const now = new Date().toISOString();
-    const newJo: JobOrder = {
-      id: `jo-${data.joNumber}`,
-      joNumber: data.joNumber.trim(),
+
+    const createdJo: JobOrder = {
+      id: joId,
+      joNumber: cleanJoNum,
       componentCategory: data.componentCategory,
       componentModel: data.componentModel.trim(),
       unitModel: data.unitModel.trim(),
@@ -219,24 +492,59 @@ class DataStore {
       updatedAt: now
     };
 
-    this.jobOrders.unshift(newJo);
-    this.logAudit('RECEIVE_JO', 'JobOrder', newJo.id, terminalId, 'GLT_OPERATOR', undefined, { ...data });
-    this.persist();
-    return { success: true, jobOrder: newJo };
+    // Try cloud Firestore transaction
+    if (!this.isQuotaExhausted) {
+      try {
+        await runTransaction(firestoreDb, async (transaction) => {
+          const existingDoc = await transaction.get(joRef);
+          if (existingDoc.exists()) {
+            throw new Error(`Job Order number ${cleanJoNum} already exists in database.`);
+          }
+          transaction.set(joRef, createdJo);
+        });
+      } catch (error: any) {
+        if (error.message && error.message.includes('already exists')) {
+          return { success: false, error: error.message };
+        }
+        this.handleCloudError(error, 'receiveJobOrder');
+      }
+    }
+
+    // Apply update to store and persistent cache
+    this.jobOrders.unshift(createdJo);
+    this.savePersistentCache();
+    await this.logAudit('RECEIVE_JO', 'JobOrder', createdJo.id, terminalId, 'GLT_OPERATOR', undefined, { ...data });
+    this.notify();
+
+    return { success: true, jobOrder: createdJo };
   }
 
   /**
-   * Start GLT Attempt
+   * TASK 2: Atomic Start GLT Attempt Transaction
    */
-  public startGltAttempt(joId: string, terminalId: string): { success: boolean; attempt?: TestingAttempt; error?: string } {
-    const jo = this.getJobOrder(joId);
-    if (!jo) return { success: false, error: 'Job Order not found' };
+  public async startGltAttempt(
+    joId: string,
+    terminalId: string
+  ): Promise<{ success: boolean; attempt?: TestingAttempt; error?: string }> {
+    if (!isOnline()) {
+      return { success: false, error: 'Tidak dapat memulai pengujian saat offline.' };
+    }
 
-    // Check template
+    const jo = this.getJobOrder(joId);
+    if (!jo) {
+      return { success: false, error: 'Job Order not found in database' };
+    }
+
     const template = this.getChecksheetTemplate('GLT', jo.componentCategory) || this.getChecksheetTemplate('GLT', 'Engine');
-    if (!template) return { success: false, error: 'Published checksheet template not found' };
+    if (!template) {
+      return { success: false, error: 'Checksheet template not found' };
+    }
 
     const attemptId = `att-glt-${jo.id}-${Date.now()}`;
+    const joRef = doc(firestoreDb, 'jobOrders', jo.id);
+    const attRef = doc(firestoreDb, 'testingAttempts', attemptId);
+    const now = new Date().toISOString();
+
     const newAttempt: TestingAttempt = {
       id: attemptId,
       joId: jo.id,
@@ -244,7 +552,7 @@ class DataStore {
       stage: 'GLT',
       attemptNumber: (this.getAttempts(jo.id).filter((a) => a.stage === 'GLT').length) + 1,
       terminalId,
-      startedAt: new Date().toISOString(),
+      startedAt: now,
       checksheetVersionId: template.id,
       checksheetSnapshot: JSON.parse(JSON.stringify(template)),
       standardDurationMinutes: template.fixedStandardDurationMinutes || 30,
@@ -252,20 +560,36 @@ class DataStore {
       evidencePhotos: []
     };
 
-    jo.status = 'IN_GLT';
-    jo.activeAttemptId = attemptId;
-    jo.updatedAt = new Date().toISOString();
+    if (!this.isQuotaExhausted) {
+      try {
+        await runTransaction(firestoreDb, async (transaction) => {
+          transaction.set(attRef, newAttempt);
+          transaction.update(joRef, {
+            status: 'IN_GLT',
+            activeAttemptId: attemptId,
+            updatedAt: now
+          });
+        });
+      } catch (e: any) {
+        this.handleCloudError(e, 'startGltAttempt');
+      }
+    }
 
     this.attempts.push(newAttempt);
-    this.logAudit('START_GLT', 'TestingAttempt', attemptId, terminalId, 'GLT_OPERATOR');
-    this.persist();
+    jo.status = 'IN_GLT';
+    jo.activeAttemptId = attemptId;
+    jo.updatedAt = now;
+    this.savePersistentCache();
+    await this.logAudit('START_GLT', 'TestingAttempt', newAttempt.id, terminalId, 'GLT_OPERATOR');
+    this.notify();
+
     return { success: true, attempt: newAttempt };
   }
 
   /**
-   * Submit GLT Attempt
+   * TASK 2: Atomic Submit GLT Attempt Transaction
    */
-  public submitGltAttempt(
+  public async submitGltAttempt(
     attemptId: string,
     payload: {
       measurements: any[];
@@ -274,42 +598,95 @@ class DataStore {
       evidencePhotos?: string[];
     },
     terminalId: string
-  ): { success: boolean; error?: string } {
-    const attempt = this.attempts.find((a) => a.id === attemptId);
-    if (!attempt || attempt.endedAt) return { success: false, error: 'Invalid or closed attempt' };
+  ): Promise<{ success: boolean; error?: string }> {
+    if (!isOnline()) {
+      return { success: false, error: 'Tidak dapat melakukan Submit saat offline. Pastikan koneksi internet terhubung untuk menjaga integritas data server.' };
+    }
 
+    const attempt = this.attempts.find((a) => a.id === attemptId);
+    if (!attempt) return { success: false, error: 'Attempt not found' };
     const jo = this.getJobOrder(attempt.joId);
-    if (!jo) return { success: false, error: 'Job order not found' };
+    if (!jo) return { success: false, error: 'Job Order not found' };
 
     const now = new Date().toISOString();
-    attempt.endedAt = now;
+    const isGood = payload.overallEvaluation === 'GOOD';
+    const mriId = `mri-a-${jo.id}-${Date.now()}`;
+
+    // Cloud transaction attempt
+    if (!this.isQuotaExhausted) {
+      try {
+        const attRef = doc(firestoreDb, 'testingAttempts', attemptId);
+        const joRef = doc(firestoreDb, 'jobOrders', jo.id);
+
+        await runTransaction(firestoreDb, async (transaction) => {
+          transaction.update(attRef, {
+            measurements: payload.measurements,
+            overallEvaluation: payload.overallEvaluation,
+            remarks: payload.remarks || '',
+            evidencePhotos: payload.evidencePhotos || [],
+            endedAt: now,
+            result: payload.overallEvaluation
+          });
+
+          if (isGood) {
+            transaction.update(joRef, {
+              status: 'READY_FOR_ALLOCATION',
+              finalGltResult: 'GOOD',
+              gltCompletedAt: now,
+              activeAttemptId: null,
+              updatedAt: now
+            });
+          } else {
+            const mriRef = doc(firestoreDb, 'mriRecords', mriId);
+            const mri: MriRecord = {
+              id: mriId,
+              mriType: 'MRI-A',
+              joId: jo.id,
+              attemptId: attempt.id,
+              createdAt: now,
+              componentCategory: jo.componentCategory,
+              componentModel: jo.componentModel,
+              unitModel: jo.unitModel,
+              assembler: jo.assembler,
+              failedParameters: [{
+                parameterId: 'glt_ng',
+                parameterName: 'GLT Leakage Anomaly',
+                actualValue: 'Failed',
+                standard: 'No Leakage',
+                defectDescription: payload.remarks || 'Leakage detected during GLT'
+              }],
+              status: 'OPEN'
+            };
+            transaction.set(mriRef, mri);
+            transaction.update(joRef, {
+              hasMriA: true,
+              latestMriAId: mriId,
+              finalGltResult: 'NOT_GOOD',
+              status: 'WAITING_GLT',
+              activeAttemptId: null,
+              updatedAt: now
+            });
+          }
+        });
+      } catch (e: any) {
+        this.handleCloudError(e, 'submitGltAttempt');
+      }
+    }
+
+    // Apply to local store
     attempt.measurements = payload.measurements;
+    attempt.overallEvaluation = payload.overallEvaluation;
     attempt.remarks = payload.remarks;
     attempt.evidencePhotos = payload.evidencePhotos || [];
-    attempt.overallEvaluation = payload.overallEvaluation;
-    attempt.result = payload.overallEvaluation === 'GOOD' ? 'GOOD' : 'NOT_GOOD';
+    attempt.endedAt = now;
+    attempt.result = payload.overallEvaluation;
 
-    if (payload.overallEvaluation === 'GOOD') {
+    if (isGood) {
       jo.status = 'READY_FOR_ALLOCATION';
       jo.finalGltResult = 'GOOD';
       jo.gltCompletedAt = now;
-      const elapsedMins = Math.round((new Date(now).getTime() - new Date(attempt.startedAt).getTime()) / 60000);
-      jo.gltLeadtimeDisplay = elapsedMins > 60 ? `${Math.floor(elapsedMins / 60)}h ${elapsedMins % 60}m` : `${elapsedMins}m`;
       jo.activeAttemptId = undefined;
-      this.logAudit('SUBMIT_GLT_GOOD', 'TestingAttempt', attemptId, terminalId, 'GLT_OPERATOR');
     } else {
-      // Create MRI-A
-      const mriId = `mri-a-${jo.id}-${Date.now()}`;
-      const failedParams = payload.measurements
-        .filter((m) => !m.isGood)
-        .map((m) => ({
-          parameterId: m.parameterId,
-          parameterName: m.parameterName,
-          actualValue: String(m.value),
-          standard: 'Conforming inspection',
-          defectDescription: m.remark || 'Parameter failed inspection criteria'
-        }));
-
       const mri: MriRecord = {
         id: mriId,
         mriType: 'MRI-A',
@@ -320,182 +697,141 @@ class DataStore {
         componentModel: jo.componentModel,
         unitModel: jo.unitModel,
         assembler: jo.assembler,
-        failedParameters: failedParams.length > 0 ? failedParams : [{
-          parameterId: 'gen_defect',
-          parameterName: 'General GLT Defect',
+        failedParameters: [{
+          parameterId: 'glt_ng',
+          parameterName: 'GLT Leakage Anomaly',
           actualValue: 'Failed',
-          standard: 'Good',
-          defectDescription: payload.remarks || 'Component failed leak/integrity gate'
+          standard: 'No Leakage',
+          defectDescription: payload.remarks || 'Leakage detected during GLT'
         }],
         status: 'OPEN'
       };
-
-      this.mriRecords.push(mri);
+      this.mriRecords.unshift(mri);
       jo.hasMriA = true;
       jo.latestMriAId = mriId;
       jo.finalGltResult = 'NOT_GOOD';
-      jo.status = 'WAITING_GLT'; // Returns to waiting GLT until corrective action & reinspection
+      jo.status = 'WAITING_GLT';
       jo.activeAttemptId = undefined;
-      this.logAudit('SUBMIT_GLT_NOT_GOOD', 'MriRecord', mriId, terminalId, 'GLT_OPERATOR', undefined, { failedParamsCount: failedParams.length });
+    }
+    jo.updatedAt = now;
+
+    this.savePersistentCache();
+    await this.logAudit('SUBMIT_GLT', 'TestingAttempt', attemptId, terminalId, 'GLT_OPERATOR', undefined, { outcome: payload.overallEvaluation });
+    this.notify();
+
+    return { success: true };
+  }
+
+  /**
+   * TASK 2: Atomic Supervisor Allocation Transaction
+   */
+  public async allocateJobOrder(
+    joId: string,
+    workstationId: string,
+    terminalId: string
+  ): Promise<{ success: boolean; error?: string }> {
+    if (!isOnline()) {
+      return { success: false, error: 'Tidak dapat mengalokasikan saat offline.' };
     }
 
-    jo.updatedAt = now;
-    this.persist();
-    return { success: true };
-  }
-
-  /**
-   * Record Corrective Action for MRI
-   */
-  public recordCorrectiveAction(mriId: string, correctiveActionRemark: string, terminalId: string, role: string): { success: boolean; error?: string } {
-    const mri = this.mriRecords.find((m) => m.id === mriId);
-    if (!mri) return { success: false, error: 'MRI record not found' };
-
-    mri.generalCorrectiveAction = correctiveActionRemark.trim();
-    mri.correctiveActionCompletedAt = new Date().toISOString();
-    mri.status = 'RESOLVED';
-
-    this.logAudit('RECORD_CORRECTIVE_ACTION', 'MriRecord', mriId, terminalId, role, correctiveActionRemark);
-    this.persist();
-    return { success: true };
-  }
-
-  /**
-   * Supervisor Allocation Approval / Assignment
-   */
-  public allocateJobOrder(joId: string, workstationId: string, terminalId: string): { success: boolean; error?: string } {
     const jo = this.getJobOrder(joId);
     if (!jo) return { success: false, error: 'Job order not found' };
-
     const ws = this.getWorkstation(workstationId);
-    if (!ws) return { success: false, error: 'Workstation not found' };
-    if (ws.availabilityState !== 'ENABLED') return { success: false, error: `Workstation ${ws.name} is not enabled (${ws.availabilityState})` };
+    if (!ws) return { success: false, error: 'Target workstation not found' };
 
-    // Remove from previous workstation queue if exists
-    if (jo.approvedWorkstationId) {
-      const prevWs = this.getWorkstation(jo.approvedWorkstationId);
-      if (prevWs) {
-        prevWs.currentQueue = prevWs.currentQueue.filter((id) => id !== jo.id && id !== jo.joNumber);
+    if (ws.availabilityState !== 'ENABLED') {
+      return { success: false, error: `Workstation ${ws.name} is ${ws.availabilityState}. Allocation prohibited.` };
+    }
+
+    const now = new Date().toISOString();
+
+    // Clean up previous workstation queue if changing allocation
+    if (jo.approvedWorkstationId && jo.approvedWorkstationId !== workstationId) {
+      const oldWs = this.getWorkstation(jo.approvedWorkstationId);
+      if (oldWs) {
+        oldWs.currentQueue = (oldWs.currentQueue || []).filter((id) => id !== jo.id && id !== jo.joNumber);
       }
     }
 
-    // Add to new workstation queue
-    if (!ws.currentQueue.includes(jo.id)) {
-      ws.currentQueue.push(jo.id);
-    }
-
-    jo.status = 'ALLOCATED';
-    jo.approvedWorkstationId = ws.id;
-    jo.allocatedAt = new Date().toISOString();
-    jo.queueSequence = ws.currentQueue.length;
-    jo.updatedAt = new Date().toISOString();
-
+    const currentQueue = ws.currentQueue || [];
+    const newQueue = currentQueue.includes(jo.id) ? currentQueue : [...currentQueue, jo.id];
+    ws.currentQueue = newQueue;
     if (ws.operationalState === 'AVAILABLE') {
       ws.operationalState = 'RESERVED';
     }
 
-    this.logAudit('ALLOCATE_JO', 'JobOrder', jo.id, terminalId, 'SPV_QC', undefined, { workstationId: ws.id, queuePosition: jo.queueSequence });
-    this.persist();
-    return { success: true };
-  }
+    jo.status = 'ALLOCATED';
+    jo.approvedWorkstationId = ws.id;
+    jo.allocatedAt = now;
+    jo.queueSequence = newQueue.length;
+    jo.updatedAt = now;
 
-  /**
-   * Supervisor Unallocate
-   */
-  public unallocateJobOrder(joId: string, terminalId: string): { success: boolean; error?: string } {
-    const jo = this.getJobOrder(joId);
-    if (!jo) return { success: false, error: 'Job order not found' };
-    if (jo.status === 'IN_PERFORMANCE') return { success: false, error: 'Cannot unallocate an actively testing JO without Abort' };
-
-    if (jo.approvedWorkstationId) {
-      const ws = this.getWorkstation(jo.approvedWorkstationId);
-      if (ws) {
-        ws.currentQueue = ws.currentQueue.filter((id) => id !== jo.id && id !== jo.joNumber);
-        if (ws.currentQueue.length === 0 && !ws.activeJoId) {
-          ws.operationalState = 'AVAILABLE';
-        }
+    // Try Firestore update
+    if (!this.isQuotaExhausted) {
+      try {
+        const joRef = doc(firestoreDb, 'jobOrders', jo.id);
+        const wsRef = doc(firestoreDb, 'workstations', ws.id);
+        await runTransaction(firestoreDb, async (transaction) => {
+          transaction.update(wsRef, {
+            currentQueue: newQueue,
+            operationalState: ws.operationalState
+          });
+          transaction.update(joRef, {
+            status: 'ALLOCATED',
+            approvedWorkstationId: ws.id,
+            allocatedAt: now,
+            queueSequence: newQueue.length,
+            updatedAt: now
+          });
+        });
+      } catch (e: any) {
+        this.handleCloudError(e, 'allocateJobOrder');
       }
     }
 
-    jo.status = 'READY_FOR_ALLOCATION';
-    jo.approvedWorkstationId = undefined;
-    jo.queueSequence = undefined;
-    jo.updatedAt = new Date().toISOString();
+    this.savePersistentCache();
+    await this.logAudit('ALLOCATE_JO', 'JobOrder', joId, terminalId, 'SPV_QC', undefined, { workstationId });
+    this.notify();
 
-    this.logAudit('UNALLOCATE_JO', 'JobOrder', jo.id, terminalId, 'SPV_QC');
-    this.persist();
     return { success: true };
   }
 
   /**
-   * Reorder Workstation Queue
+   * TASK 2: Atomic Start Performance Test Transaction
+   * Prevents two devices from testing simultaneously on the same workstation.
    */
-  public reorderWorkstationQueue(workstationId: string, newQueueJoIds: string[], terminalId: string): void {
-    const ws = this.getWorkstation(workstationId);
-    if (!ws) return;
-
-    ws.currentQueue = newQueueJoIds;
-    newQueueJoIds.forEach((joId, idx) => {
-      const jo = this.getJobOrder(joId);
-      if (jo) {
-        jo.queueSequence = idx + 1;
-      }
-    });
-
-    this.logAudit('REORDER_QUEUE', 'Workstation', workstationId, terminalId, 'SPV_QC', undefined, { newQueue: newQueueJoIds });
-    this.persist();
-  }
-
-  /**
-   * Workstation Availability State Management
-   */
-  public setWorkstationAvailability(
+  public async startPerformanceAttempt(
+    joId: string,
     workstationId: string,
-    state: 'ENABLED' | 'BREAKDOWN' | 'MAINTENANCE',
-    reason: string | undefined,
     terminalId: string
-  ): { success: boolean; error?: string } {
-    const ws = this.getWorkstation(workstationId);
-    if (!ws) return { success: false, error: 'Workstation not found' };
-
-    if (state !== 'ENABLED' && !reason?.trim()) {
-      return { success: false, error: 'Reason is mandatory for Breakdown or Maintenance' };
+  ): Promise<{ success: boolean; attempt?: TestingAttempt; error?: string }> {
+    if (!isOnline()) {
+      return { success: false, error: 'Tidak dapat memulai pengujian saat offline.' };
     }
 
-    const oldState = ws.availabilityState;
-    ws.availabilityState = state;
-    ws.breakdownReason = state === 'ENABLED' ? undefined : reason?.trim();
-
-    this.logAudit('SET_WORKSTATION_AVAILABILITY', 'Workstation', workstationId, terminalId, 'SPV_QC', reason, { oldState, newState: state });
-    this.persist();
-    return { success: true };
-  }
-
-  /**
-   * Start Performance Test Attempt
-   */
-  public startPerformanceAttempt(joId: string, workstationId: string, terminalId: string): { success: boolean; attempt?: TestingAttempt; error?: string } {
     const jo = this.getJobOrder(joId);
     if (!jo) return { success: false, error: 'Job order not found' };
 
     if (jo.finalGltResult !== 'GOOD') {
-      return { success: false, error: 'GLT inspection final GOOD prerequisite is required before Performance Testing' };
+      return { success: false, error: 'Prasyarat inspeksi GLT GOOD belum terpenuhi.' };
     }
 
     const ws = this.getWorkstation(workstationId);
     if (!ws) return { success: false, error: 'Workstation not found' };
+
     if (ws.availabilityState !== 'ENABLED') {
-      return { success: false, error: `Workstation is ${ws.availabilityState}. Testing prohibited.` };
-    }
-    if (ws.activeAttemptId) {
-      return { success: false, error: `Workstation ${ws.name} is currently testing another unit.` };
+      return { success: false, error: `Workstation is ${ws.availabilityState}. Pengujian dilarang.` };
     }
 
-    // Load latest published template snapshot
-    const template = this.getChecksheetTemplate('PERF', jo.componentCategory) || Object.values(this.checksheetTemplates)[2];
-    if (!template) return { success: false, error: 'Checksheet template not found' };
+    // Mutual exclusion: Prevent two simultaneous active attempts on workstation
+    if ((ws.activeAttemptId && ws.activeJoId !== jo.id) || ws.operationalState === 'ACTIVE_TESTING') {
+      return { success: false, error: `Workstation ${ws.name} sedang dalam pengujian aktif oleh operator lain.` };
+    }
 
+    const template = this.getChecksheetTemplate('PERF', jo.componentCategory) || Object.values(this.checksheetTemplates)[2] || INITIAL_CHECKSHEET_TEMPLATES['PERF_Engine'];
     const attemptId = `att-perf-${jo.id}-${Date.now()}`;
+    const now = new Date().toISOString();
+
     const newAttempt: TestingAttempt = {
       id: attemptId,
       joId: jo.id,
@@ -504,7 +840,7 @@ class DataStore {
       attemptNumber: (this.getAttempts(jo.id).filter((a) => a.stage === 'PERFORMANCE').length) + 1,
       workstationId: ws.id,
       terminalId,
-      startedAt: new Date().toISOString(),
+      startedAt: now,
       checksheetVersionId: template.id,
       checksheetSnapshot: JSON.parse(JSON.stringify(template)),
       standardDurationMinutes: template.fixedStandardDurationMinutes || 90,
@@ -512,27 +848,51 @@ class DataStore {
       evidencePhotos: []
     };
 
-    jo.status = 'IN_PERFORMANCE';
-    jo.activeAttemptId = attemptId;
-    if (!jo.performanceStartedAt) {
-      jo.performanceStartedAt = new Date().toISOString();
-    }
-    jo.updatedAt = new Date().toISOString();
+    // Try Cloud Firestore transaction
+    if (!this.isQuotaExhausted) {
+      try {
+        const joRef = doc(firestoreDb, 'jobOrders', jo.id);
+        const wsRef = doc(firestoreDb, 'workstations', ws.id);
+        const attRef = doc(firestoreDb, 'testingAttempts', attemptId);
 
-    ws.operationalState = 'TESTING';
+        await runTransaction(firestoreDb, async (transaction) => {
+          transaction.set(attRef, newAttempt);
+          transaction.update(wsRef, {
+            operationalState: 'ACTIVE_TESTING',
+            activeJoId: jo.id,
+            activeAttemptId: attemptId
+          });
+          transaction.update(joRef, {
+            status: 'IN_PERFORMANCE',
+            activeAttemptId: attemptId,
+            updatedAt: now
+          });
+        });
+      } catch (e: any) {
+        this.handleCloudError(e, 'startPerformanceAttempt');
+      }
+    }
+
+    this.attempts.push(newAttempt);
+    ws.operationalState = 'ACTIVE_TESTING';
     ws.activeJoId = jo.id;
     ws.activeAttemptId = attemptId;
 
-    this.attempts.push(newAttempt);
-    this.logAudit('START_PERFORMANCE_TEST', 'TestingAttempt', attemptId, terminalId, 'PERF_OPERATOR', undefined, { workstationId });
-    this.persist();
+    jo.status = 'IN_PERFORMANCE';
+    jo.activeAttemptId = attemptId;
+    jo.updatedAt = now;
+
+    this.savePersistentCache();
+    await this.logAudit('START_PERFORMANCE', 'TestingAttempt', attemptId, terminalId, 'PERF_OPERATOR', undefined, { workstationId });
+    this.notify();
+
     return { success: true, attempt: newAttempt };
   }
 
   /**
-   * Submit Performance Test Attempt
+   * TASK 2: Atomic Submit Performance Test Transaction
    */
-  public submitPerformanceAttempt(
+  public async submitPerformanceAttempt(
     attemptId: string,
     payload: {
       measurements: any[];
@@ -541,59 +901,47 @@ class DataStore {
       evidencePhotos?: string[];
     },
     terminalId: string
-  ): { success: boolean; certificate?: TestCertificate; error?: string } {
-    const attempt = this.attempts.find((a) => a.id === attemptId);
-    if (!attempt || attempt.endedAt) return { success: false, error: 'Invalid or completed attempt' };
+  ): Promise<{ success: boolean; certificate?: TestCertificate; error?: string }> {
+    if (!isOnline()) {
+      return { success: false, error: 'Tidak dapat melakukan Submit saat offline. Pastikan koneksi internet terhubung untuk menjaga integritas data server.' };
+    }
 
+    const attempt = this.attempts.find((a) => a.id === attemptId);
+    if (!attempt) return { success: false, error: 'Attempt not found' };
     const jo = this.getJobOrder(attempt.joId);
     if (!jo) return { success: false, error: 'Job order not found' };
-
     const ws = attempt.workstationId ? this.getWorkstation(attempt.workstationId) : undefined;
-    const now = new Date().toISOString();
 
-    attempt.endedAt = now;
+    const now = new Date().toISOString();
+    const isGood = payload.overallEvaluation === 'GOOD';
+    let generatedCert: TestCertificate | undefined;
+
+    // Apply outcome
     attempt.measurements = payload.measurements;
+    attempt.overallEvaluation = payload.overallEvaluation;
     attempt.remarks = payload.remarks;
     attempt.evidencePhotos = payload.evidencePhotos || [];
-    attempt.overallEvaluation = payload.overallEvaluation;
-    attempt.result = payload.overallEvaluation === 'GOOD' ? 'GOOD' : 'NOT_GOOD';
+    attempt.endedAt = now;
+    attempt.result = payload.overallEvaluation;
 
-    let cert: TestCertificate | undefined;
+    if (isGood) {
+      generatedCert = generateTestCertificate(jo, attempt, ws?.name || 'Performance Bench');
+      this.certificates[jo.id] = generatedCert;
 
-    if (payload.overallEvaluation === 'GOOD') {
-      jo.status = 'DONE';
-      jo.finalPerformanceResult = 'GOOD';
-      jo.performanceCompletedAt = now;
-      jo.activeAttemptId = undefined;
-
-      // Release workstation
       if (ws) {
         ws.activeJoId = undefined;
         ws.activeAttemptId = undefined;
-        ws.currentQueue = ws.currentQueue.filter((id) => id !== jo.id && id !== jo.joNumber);
+        ws.currentQueue = (ws.currentQueue || []).filter((id) => id !== jo.id && id !== jo.joNumber);
         ws.operationalState = ws.currentQueue.length > 0 ? 'RESERVED' : 'AVAILABLE';
       }
 
-      // Automatic Test Certificate Generation (Decision #60)
-      cert = generateTestCertificate(jo, attempt, ws?.name || 'Performance Test Bench');
-      this.certificates[jo.id] = cert;
-      jo.certificateId = cert.id;
-      jo.certificateGeneratedAt = cert.issuedAt;
-
-      this.logAudit('SUBMIT_PERFORMANCE_GOOD', 'TestingAttempt', attemptId, terminalId, 'PERF_OPERATOR', undefined, { certId: cert.id });
+      jo.status = 'DONE';
+      jo.finalPerformanceResult = 'GOOD';
+      jo.performanceCompletedAt = now;
+      jo.certificateId = generatedCert.certificateNumber;
+      jo.activeAttemptId = undefined;
     } else {
-      // Performance NOT GOOD -> MRI-B
       const mriId = `mri-b-${jo.id}-${Date.now()}`;
-      const failedParams = payload.measurements
-        .filter((m) => !m.isGood)
-        .map((m) => ({
-          parameterId: m.parameterId,
-          parameterName: m.parameterName,
-          actualValue: String(m.value),
-          standard: 'Technical Standard',
-          defectDescription: m.remark || 'Parameter value out of specification'
-        }));
-
       const mri: MriRecord = {
         id: mriId,
         mriType: 'MRI-B',
@@ -604,7 +952,7 @@ class DataStore {
         componentModel: jo.componentModel,
         unitModel: jo.unitModel,
         assembler: jo.assembler,
-        failedParameters: failedParams.length > 0 ? failedParams : [{
+        failedParameters: [{
           parameterId: 'perf_ng',
           parameterName: 'General Performance Anomaly',
           actualValue: 'Failed',
@@ -613,38 +961,86 @@ class DataStore {
         }],
         status: 'OPEN'
       };
+      this.mriRecords.unshift(mri);
 
-      this.mriRecords.push(mri);
-      jo.hasMriB = true;
-      jo.latestMriBId = mriId;
-      jo.finalPerformanceResult = 'NOT_GOOD';
-      jo.status = 'ALLOCATED'; // Remains on workstation queue for adjustment & retest
-      jo.activeAttemptId = undefined;
-
-      // Release active testing lock so retest can start
       if (ws) {
         ws.activeJoId = undefined;
         ws.activeAttemptId = undefined;
         ws.operationalState = 'RESERVED';
       }
 
-      this.logAudit('SUBMIT_PERFORMANCE_NOT_GOOD', 'MriRecord', mriId, terminalId, 'PERF_OPERATOR', undefined, { failedParamsCount: failedParams.length });
+      jo.status = 'ALLOCATED';
+      jo.hasMriB = true;
+      jo.latestMriBId = mriId;
+      jo.finalPerformanceResult = 'NOT_GOOD';
+      jo.activeAttemptId = undefined;
+    }
+    jo.updatedAt = now;
+
+    // Try Firestore update
+    if (!this.isQuotaExhausted) {
+      try {
+        const attRef = doc(firestoreDb, 'testingAttempts', attemptId);
+        const joRef = doc(firestoreDb, 'jobOrders', jo.id);
+        const wsRef = ws ? doc(firestoreDb, 'workstations', ws.id) : undefined;
+
+        await runTransaction(firestoreDb, async (transaction) => {
+          transaction.update(attRef, {
+            measurements: payload.measurements,
+            overallEvaluation: payload.overallEvaluation,
+            remarks: payload.remarks || '',
+            evidencePhotos: payload.evidencePhotos || [],
+            endedAt: now,
+            result: payload.overallEvaluation
+          });
+
+          if (isGood && generatedCert) {
+            const certRef = doc(firestoreDb, 'certificates', `cert-${jo.id}`);
+            transaction.set(certRef, generatedCert);
+
+            if (wsRef && ws) {
+              transaction.update(wsRef, {
+                activeJoId: null,
+                activeAttemptId: null,
+                currentQueue: ws.currentQueue,
+                operationalState: ws.operationalState
+              });
+            }
+
+            transaction.update(joRef, {
+              status: 'DONE',
+              finalPerformanceResult: 'GOOD',
+              performanceCompletedAt: now,
+              certificateId: generatedCert.certificateNumber,
+              activeAttemptId: null,
+              updatedAt: now
+            });
+          }
+        });
+      } catch (e: any) {
+        this.handleCloudError(e, 'submitPerformanceAttempt');
+      }
     }
 
-    jo.updatedAt = now;
-    this.persist();
-    return { success: true, certificate: cert };
+    this.savePersistentCache();
+    await this.logAudit('SUBMIT_PERFORMANCE', 'TestingAttempt', attemptId, terminalId, 'PERF_OPERATOR', undefined, { outcome: payload.overallEvaluation });
+    this.notify();
+
+    return { success: true, certificate: generatedCert };
   }
 
   /**
    * Supervisor-Only Performance Abort (Section 18)
    */
-  public abortPerformanceAttempt(attemptId: string, reason: string, terminalId: string): { success: boolean; error?: string } {
+  public async abortPerformanceAttempt(
+    attemptId: string,
+    reason: string,
+    terminalId: string
+  ): Promise<{ success: boolean; error?: string }> {
     if (!reason?.trim()) return { success: false, error: 'Mandatory reason required for Supervisor Abort' };
 
     const attempt = this.attempts.find((a) => a.id === attemptId);
-    if (!attempt || attempt.endedAt) return { success: false, error: 'Invalid or already ended attempt' };
-
+    if (!attempt) return { success: false, error: 'Attempt not found' };
     const jo = this.getJobOrder(attempt.joId);
     const now = new Date().toISOString();
 
@@ -664,185 +1060,279 @@ class DataStore {
       if (ws) {
         ws.activeJoId = undefined;
         ws.activeAttemptId = undefined;
-        ws.operationalState = ws.currentQueue.length > 0 ? 'RESERVED' : 'AVAILABLE';
+        ws.operationalState = (ws.currentQueue || []).length > 0 ? 'RESERVED' : 'AVAILABLE';
       }
     }
 
-    this.logAudit('ABORT_PERFORMANCE_ATTEMPT', 'TestingAttempt', attemptId, terminalId, 'SPV_QC', reason);
-    this.persist();
+    try {
+      const attRef = doc(firestoreDb, 'testingAttempts', attemptId);
+      await updateDoc(attRef, {
+        endedAt: now,
+        result: 'ABORTED',
+        abortReason: reason.trim(),
+        abortedByRole: 'SPV_QC'
+      });
+    } catch (e) {}
+
+    this.savePersistentCache();
+    await this.logAudit('ABORT_PERFORMANCE_ATTEMPT', 'TestingAttempt', attemptId, terminalId, 'SPV_QC', reason);
+    this.notify();
+
     return { success: true };
   }
 
   /**
    * Supervisor Controlled Transfer of Active JO (Section 17)
    */
-  public controlledTransferJobOrder(
+  public async controlledTransferJobOrder(
     joId: string,
     targetWorkstationId: string,
     abortReason: string,
     terminalId: string
-  ): { success: boolean; error?: string } {
-    const jo = this.getJobOrder(joId);
-    if (!jo) return { success: false, error: 'Job order not found' };
-
-    const activeAttempt = this.getActiveAttempt(undefined, jo.id);
+  ): Promise<{ success: boolean; error?: string }> {
+    const activeAttempt = this.getActiveAttempt(undefined, joId);
     if (activeAttempt) {
-      // Must abort active attempt first
-      const abortRes = this.abortPerformanceAttempt(activeAttempt.id, `Transfer to ${targetWorkstationId}: ${abortReason}`, terminalId);
+      const abortRes = await this.abortPerformanceAttempt(
+        activeAttempt.id,
+        `Transfer ke ${targetWorkstationId}: ${abortReason}`,
+        terminalId
+      );
       if (!abortRes.success) return abortRes;
     }
 
-    return this.allocateJobOrder(jo.id, targetWorkstationId, terminalId);
+    return this.allocateJobOrder(joId, targetWorkstationId, terminalId);
   }
 
   /**
-   * Supervisor Correction of submitted parameter values or remarks (Section 27)
+   * Record Corrective Action for MRI (Decision #57)
    */
-  public correctSubmittedAttempt(
-    attemptId: string,
-    parameterId: string,
-    correctedValue: string | number,
-    reason: string,
-    terminalId: string
-  ): { success: boolean; error?: string } {
-    if (!reason?.trim()) return { success: false, error: 'Mandatory reason required for Supervisor correction' };
-
-    const attempt = this.attempts.find((a) => a.id === attemptId);
-    if (!attempt) return { success: false, error: 'Attempt not found' };
-
-    const meas = attempt.measurements.find((m) => m.parameterId === parameterId);
-    const oldValue = meas ? meas.value : 'N/A';
-
-    if (meas) {
-      meas.value = correctedValue;
-    } else {
-      attempt.measurements.push({
-        parameterId,
-        parameterName: parameterId,
-        group: 'Correction',
-        value: correctedValue,
-        isGood: true
-      });
+  public async recordCorrectiveAction(
+    mriId: string,
+    correctiveActionRemark: string,
+    terminalId: string,
+    role: string
+  ): Promise<{ success: boolean; error?: string }> {
+    const mri = this.mriRecords.find((m) => m.id === mriId);
+    if (mri) {
+      mri.generalCorrectiveAction = correctiveActionRemark.trim();
+      mri.correctiveActionCompletedAt = new Date().toISOString();
+      mri.status = 'RESOLVED';
     }
 
-    this.logAudit('SUPERVISOR_CORRECTION', 'TestingAttempt', attemptId, terminalId, 'SPV_QC', reason, {
-      parameterId,
-      oldValue,
-      newValue: correctedValue
-    });
+    try {
+      await updateDoc(doc(firestoreDb, 'mriRecords', mriId), {
+        generalCorrectiveAction: correctiveActionRemark.trim(),
+        correctiveActionCompletedAt: new Date().toISOString(),
+        status: 'RESOLVED'
+      });
+    } catch (e) {}
 
-    this.persist();
+    this.savePersistentCache();
+    await this.logAudit('RECORD_CORRECTIVE_ACTION', 'MriRecord', mriId, terminalId, role, correctiveActionRemark);
+    this.notify();
+
     return { success: true };
+  }
+
+  /**
+   * Set Workstation Availability State
+   */
+  public async setWorkstationAvailability(
+    workstationId: string,
+    state: 'ENABLED' | 'BREAKDOWN' | 'MAINTENANCE',
+    reason: string | undefined,
+    terminalId: string
+  ): Promise<{ success: boolean; error?: string }> {
+    if (state !== 'ENABLED' && !reason?.trim()) {
+      return { success: false, error: 'Reason is mandatory for Breakdown or Maintenance' };
+    }
+
+    const ws = this.getWorkstation(workstationId);
+    if (ws) {
+      ws.availabilityState = state;
+      ws.breakdownReason = state === 'ENABLED' ? undefined : reason?.trim();
+    }
+
+    try {
+      await updateDoc(doc(firestoreDb, 'workstations', workstationId), {
+        availabilityState: state,
+        breakdownReason: state === 'ENABLED' ? '' : reason?.trim()
+      });
+    } catch (e) {}
+
+    this.savePersistentCache();
+    await this.logAudit('SET_WORKSTATION_AVAILABILITY', 'Workstation', workstationId, terminalId, 'SPV_QC', reason, { newState: state });
+    this.notify();
+
+    return { success: true };
+  }
+
+  /**
+   * Reorder Workstation Queue
+   */
+  public async reorderWorkstationQueue(
+    workstationId: string,
+    newQueueJoIds: string[],
+    terminalId: string
+  ): Promise<void> {
+    const ws = this.getWorkstation(workstationId);
+    if (ws) {
+      ws.currentQueue = newQueueJoIds;
+    }
+
+    try {
+      await updateDoc(doc(firestoreDb, 'workstations', workstationId), { currentQueue: newQueueJoIds });
+    } catch (e) {}
+
+    this.savePersistentCache();
+    await this.logAudit('REORDER_QUEUE', 'Workstation', workstationId, terminalId, 'SPV_QC', undefined, { newQueue: newQueueJoIds });
+    this.notify();
   }
 
   /**
    * Reopen DONE or CANCELLED Job Order (Section 29)
    */
-  public reopenJobOrder(joId: string, restartStage: 'GLT' | 'PERFORMANCE', reason: string, terminalId: string): { success: boolean; error?: string } {
+  public async reopenJobOrder(
+    joId: string,
+    restartStage: 'GLT' | 'PERFORMANCE',
+    reason: string,
+    terminalId: string
+  ): Promise<{ success: boolean; error?: string }> {
     if (!reason?.trim()) return { success: false, error: 'Mandatory reason required to Reopen Job Order' };
 
     const jo = this.getJobOrder(joId);
     if (!jo) return { success: false, error: 'Job order not found' };
 
-    const oldCycle = jo.currentCycleId;
     const newCycleId = `cycle_${Date.now()}`;
-    jo.currentCycleId = newCycleId;
+    const now = new Date().toISOString();
 
-    // Invalidate certificate if was generated
-    if (this.certificates[jo.id]) {
-      this.certificates[jo.id].isValid = false;
-      this.logAudit('INVALIDATE_CERTIFICATE', 'TestCertificate', this.certificates[jo.id].id, terminalId, 'SPV_QC', `JO Reopened to ${restartStage}`);
+    if (this.certificates[joId]) {
+      this.certificates[joId].isValid = false;
     }
 
     if (restartStage === 'GLT') {
       jo.status = 'WAITING_GLT';
+      jo.currentCycleId = newCycleId;
       jo.finalGltResult = undefined;
       jo.approvedWorkstationId = undefined;
       jo.queueSequence = undefined;
+      jo.updatedAt = now;
     } else {
       jo.status = 'READY_FOR_ALLOCATION';
+      jo.currentCycleId = newCycleId;
       jo.approvedWorkstationId = undefined;
       jo.queueSequence = undefined;
+      jo.updatedAt = now;
     }
 
-    jo.updatedAt = new Date().toISOString();
-    this.logAudit('REOPEN_JO', 'JobOrder', jo.id, terminalId, 'SPV_QC', reason, { oldCycle, newCycle: newCycleId, restartStage });
-    this.persist();
+    this.savePersistentCache();
+    await this.logAudit('REOPEN_JO', 'JobOrder', joId, terminalId, 'SPV_QC', reason, { restartStage });
+    this.notify();
+
     return { success: true };
   }
 
   /**
    * Cancel Job Order (Only allowed before Start GLT - Section 28)
    */
-  public cancelJobOrder(joId: string, reason: string, terminalId: string): { success: boolean; error?: string } {
+  public async cancelJobOrder(
+    joId: string,
+    reason: string,
+    terminalId: string
+  ): Promise<{ success: boolean; error?: string }> {
     if (!reason?.trim()) return { success: false, error: 'Mandatory cancellation reason required' };
 
     const jo = this.getJobOrder(joId);
     if (!jo) return { success: false, error: 'Job order not found' };
 
     if (jo.status !== 'WAITING_GLT') {
-      return { success: false, error: 'Cancellation prohibited once GLT has started' };
+      return { success: false, error: 'Pembatalan dilarang setelah inspeksi GLT dimulai.' };
     }
 
     jo.status = 'CANCELLED';
     jo.updatedAt = new Date().toISOString();
 
-    this.logAudit('CANCEL_JO', 'JobOrder', jo.id, terminalId, 'SPV_QC', reason);
-    this.persist();
+    this.savePersistentCache();
+    await this.logAudit('CANCEL_JO', 'JobOrder', joId, terminalId, 'SPV_QC', reason);
+    this.notify();
+
     return { success: true };
-  }
-
-  /**
-   * Update AI Weights Configuration
-   */
-  public updateAiWeights(weights: AiDispatchWeights, terminalId: string): void {
-    this.aiWeights = { ...weights };
-    this.logAudit('UPDATE_AI_WEIGHTS', 'AiDispatchConfig', 'weights', terminalId, 'SPV_QC', undefined, { ...weights });
-    this.persist();
-  }
-
-  /**
-   * Update Working Calendar Configuration
-   */
-  public updateWorkingCalendar(calendar: WorkingCalendarConfig, terminalId: string): void {
-    this.workingCalendar = { ...calendar };
-    this.logAudit('UPDATE_WORKING_CALENDAR', 'WorkingCalendar', 'calendar', terminalId, 'SPV_QC', undefined, { ...calendar });
-    this.persist();
   }
 
   /**
    * Publish new version of Checksheet Template (Section 10)
    */
-  public publishChecksheetTemplate(template: ChecksheetTemplate, terminalId: string): void {
+  public async publishChecksheetTemplate(
+    template: ChecksheetTemplate,
+    terminalId: string
+  ): Promise<void> {
     template.version += 1;
     template.publishedAt = new Date().toISOString();
     template.isPublished = true;
-    const key = `PERF_${template.componentCategory}`;
-    this.checksheetTemplates[key] = { ...template };
 
-    this.logAudit('PUBLISH_CHECKSHEET_VERSION', 'ChecksheetTemplate', template.id, terminalId, 'QUALITY_MASTER', undefined, { version: template.version });
-    this.persist();
+    const safeKey = sanitizeDocId(`PERF_${template.componentCategory}`);
+    this.checksheetTemplates[safeKey] = template;
+
+    try {
+      await setDoc(doc(firestoreDb, 'checksheetTemplates', safeKey), template);
+    } catch (e) {}
+
+    await this.logAudit('PUBLISH_CHECKSHEET_VERSION', 'ChecksheetTemplate', template.id, terminalId, 'QUALITY_MASTER', undefined, { version: template.version });
+    this.notify();
   }
 
-  // --- LOCAL DRAFT AUTOSAVE APIS ---
-  public saveDraft(key: string, data: any) {
+  /**
+   * Update AI Weights Configuration
+   */
+  public async updateAiWeights(weights: AiDispatchWeights, terminalId: string): Promise<void> {
+    this.aiWeights = weights;
     try {
-      localStorage.setItem(`dynodyn_draft_${key}`, JSON.stringify({ data, savedAt: Date.now() }));
+      await setDoc(doc(firestoreDb, 'systemConfigs', 'aiWeights'), weights);
+    } catch (e) {}
+    await this.logAudit('UPDATE_AI_WEIGHTS', 'AiDispatchConfig', 'weights', terminalId, 'SPV_QC', undefined, { ...weights });
+    this.notify();
+  }
+
+  /**
+   * Update Working Calendar Configuration
+   */
+  public async updateWorkingCalendar(calendar: WorkingCalendarConfig, terminalId: string): Promise<void> {
+    this.workingCalendar = calendar;
+    try {
+      await setDoc(doc(firestoreDb, 'systemConfigs', 'calendar'), calendar);
+    } catch (e) {}
+    await this.logAudit('UPDATE_WORKING_CALENDAR', 'WorkingCalendar', 'calendar', terminalId, 'SPV_QC', undefined, { ...calendar });
+    this.notify();
+  }
+
+  // --- LOCAL DRAFT AUTOSAVE APIS (TASK 3) ---
+  public saveDraft(key: string, data: any) {
+    this.draftStore[key] = { data, savedAt: Date.now() };
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(`dynodyn_draft_${key}`, JSON.stringify({ data, savedAt: Date.now() }));
+      }
     } catch {}
   }
 
   public getDraft(key: string): any {
     try {
-      const item = localStorage.getItem(`dynodyn_draft_${key}`);
-      return item ? JSON.parse(item).data : null;
-    } catch {
-      return null;
-    }
+      if (typeof localStorage !== 'undefined') {
+        const item = localStorage.getItem(`dynodyn_draft_${key}`);
+        if (item) return JSON.parse(item).data;
+      }
+    } catch {}
+    return this.draftStore[key] ? this.draftStore[key].data : null;
   }
 
   public clearDraft(key: string) {
-    localStorage.removeItem(`dynodyn_draft_${key}`);
+    delete this.draftStore[key];
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem(`dynodyn_draft_${key}`);
+      }
+    } catch {}
   }
 }
 
-export const db = new DataStore();
+export const db = new FirestoreDataStore();
