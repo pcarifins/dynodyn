@@ -101,9 +101,10 @@ export async function testConnection(): Promise<boolean> {
   try {
     await getDocFromServer(doc(firestoreDb, 'test', 'connection'));
     return true;
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error('Please check your Firebase configuration.');
+  } catch (error: any) {
+    const msg = error?.message || String(error);
+    if (msg.includes('permission-denied') || msg.includes('Missing or insufficient permissions') || msg.includes('unavailable') || msg.includes('offline') || msg.includes('network')) {
+      console.error('Firestore connection/permission error:', msg);
       return false;
     }
     // Document not existing is a normal successful roundtrip

@@ -1,3 +1,8 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 import {
   collection,
   doc,
@@ -9,7 +14,9 @@ import {
   onSnapshot,
   query,
   where,
-  writeBatch
+  writeBatch,
+  serverTimestamp,
+  Timestamp
 } from 'firebase/firestore';
 import { firestoreDb, auth, ensureAuthenticated } from './firebase';
 import {
@@ -39,14 +46,18 @@ function sanitizeDocId(key: string): string {
   return key.replace(/[\/\s]/g, '_');
 }
 
+/**
+ * FirestoreDataStore: Exclusive Cloud Firestore Authoritative Database Engine
+ * Synchronizes all industrial operations in realtime across multiple terminals.
+ */
 class FirestoreDataStore {
   private jobOrders: JobOrder[] = [];
-  private workstations: Workstation[] = [];
+  private workstations: Workstation[] = INITIAL_WORKSTATIONS;
   private attempts: TestingAttempt[] = [];
   private mriRecords: MriRecord[] = [];
   private certificates: Record<string, TestCertificate> = {};
   private auditEvents: AuditEvent[] = [];
-  private checksheetTemplates: Record<string, ChecksheetTemplate> = {};
+  private checksheetTemplates: Record<string, ChecksheetTemplate> = { ...INITIAL_CHECKSHEET_TEMPLATES };
   private workingCalendar: WorkingCalendarConfig = INITIAL_WORKING_CALENDAR;
   private aiWeights: AiDispatchWeights = DEFAULT_AI_WEIGHTS;
 
@@ -65,49 +76,7 @@ class FirestoreDataStore {
   }
 
   constructor() {
-    this.loadPersistentCache();
     this.init();
-  }
-
-  private loadPersistentCache() {
-    try {
-      if (typeof localStorage !== 'undefined') {
-        const cachedJobs = localStorage.getItem('dynodyn_persist_jobOrders');
-        if (cachedJobs) this.jobOrders = JSON.parse(cachedJobs);
-        const cachedWs = localStorage.getItem('dynodyn_persist_workstations');
-        if (cachedWs) this.workstations = JSON.parse(cachedWs);
-        const cachedAtt = localStorage.getItem('dynodyn_persist_attempts');
-        if (cachedAtt) this.attempts = JSON.parse(cachedAtt);
-        const cachedMri = localStorage.getItem('dynodyn_persist_mriRecords');
-        if (cachedMri) this.mriRecords = JSON.parse(cachedMri);
-        const cachedCert = localStorage.getItem('dynodyn_persist_certificates');
-        if (cachedCert) this.certificates = JSON.parse(cachedCert);
-        const cachedAud = localStorage.getItem('dynodyn_persist_auditEvents');
-        if (cachedAud) this.auditEvents = JSON.parse(cachedAud);
-      }
-    } catch (e) {
-      console.warn('Could not load persistent cache:', e);
-    }
-
-    if (this.jobOrders.length === 0) {
-      this.jobOrders = [...INITIAL_JOB_ORDERS];
-    }
-    if (this.workstations.length === 0) {
-      this.workstations = [...INITIAL_WORKSTATIONS];
-    }
-  }
-
-  private savePersistentCache() {
-    try {
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem('dynodyn_persist_jobOrders', JSON.stringify(this.jobOrders));
-        localStorage.setItem('dynodyn_persist_workstations', JSON.stringify(this.workstations));
-        localStorage.setItem('dynodyn_persist_attempts', JSON.stringify(this.attempts));
-        localStorage.setItem('dynodyn_persist_mriRecords', JSON.stringify(this.mriRecords));
-        localStorage.setItem('dynodyn_persist_certificates', JSON.stringify(this.certificates));
-        localStorage.setItem('dynodyn_persist_auditEvents', JSON.stringify(this.auditEvents));
-      }
-    } catch {}
   }
 
   public async init(): Promise<void> {
@@ -118,12 +87,12 @@ class FirestoreDataStore {
       await ensureAuthenticated();
       this.setupRealtimeListeners();
     } catch (e) {
-      console.warn('Firebase init error, fallback to persistent store:', e);
+      console.warn('Firebase init error during auth or listeners setup:', e);
     }
   }
 
   private setupRealtimeListeners() {
-    // 1. Job Orders Listener
+    // 1. Job Orders Realtime Listener
     const joUnsub = onSnapshot(
       collection(firestoreDb, 'jobOrders'),
       (snapshot) => {
@@ -134,9 +103,9 @@ class FirestoreDataStore {
           });
           jobs.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
           this.jobOrders = jobs;
-          this.savePersistentCache();
           this.notify();
-        } else if (!this.hasSeeded && this.jobOrders.length > 0) {
+        } else if (!this.hasSeeded) {
+          // If Firestore is empty on initial boot, seed initial data once without overwriting existing records
           this.seedInitialData();
         }
       },
@@ -146,7 +115,7 @@ class FirestoreDataStore {
     );
     this.unsubscribers.push(joUnsub);
 
-    // 2. Workstations Listener
+    // 2. Workstations Realtime Listener
     const wsUnsub = onSnapshot(
       collection(firestoreDb, 'workstations'),
       (snapshot) => {
@@ -160,7 +129,6 @@ class FirestoreDataStore {
           };
           list.sort((a, b) => (orderMap[a.id] || 99) - (orderMap[b.id] || 99));
           this.workstations = list;
-          this.savePersistentCache();
           this.notify();
         }
       },
@@ -170,7 +138,7 @@ class FirestoreDataStore {
     );
     this.unsubscribers.push(wsUnsub);
 
-    // 3. Testing Attempts Listener
+    // 3. Testing Attempts Realtime Listener
     const attUnsub = onSnapshot(
       collection(firestoreDb, 'testingAttempts'),
       (snapshot) => {
@@ -180,7 +148,6 @@ class FirestoreDataStore {
             list.push(docSnap.data() as TestingAttempt);
           });
           this.attempts = list;
-          this.savePersistentCache();
           this.notify();
         }
       },
@@ -190,7 +157,7 @@ class FirestoreDataStore {
     );
     this.unsubscribers.push(attUnsub);
 
-    // 4. MRI Records Listener
+    // 4. MRI Records Realtime Listener
     const mriUnsub = onSnapshot(
       collection(firestoreDb, 'mriRecords'),
       (snapshot) => {
@@ -200,7 +167,6 @@ class FirestoreDataStore {
             list.push(docSnap.data() as MriRecord);
           });
           this.mriRecords = list;
-          this.savePersistentCache();
           this.notify();
         }
       },
@@ -210,7 +176,7 @@ class FirestoreDataStore {
     );
     this.unsubscribers.push(mriUnsub);
 
-    // 5. Certificates Listener
+    // 5. Certificates Realtime Listener
     const certUnsub = onSnapshot(
       collection(firestoreDb, 'certificates'),
       (snapshot) => {
@@ -221,7 +187,6 @@ class FirestoreDataStore {
             certMap[cert.joId] = cert;
           });
           this.certificates = certMap;
-          this.savePersistentCache();
           this.notify();
         }
       },
@@ -231,7 +196,7 @@ class FirestoreDataStore {
     );
     this.unsubscribers.push(certUnsub);
 
-    // 6. Audit Events Listener
+    // 6. Audit Events Realtime Listener
     const auditUnsub = onSnapshot(
       collection(firestoreDb, 'auditEvents'),
       (snapshot) => {
@@ -242,7 +207,6 @@ class FirestoreDataStore {
           });
           list.sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());
           this.auditEvents = list;
-          this.savePersistentCache();
           this.notify();
         }
       },
@@ -252,7 +216,7 @@ class FirestoreDataStore {
     );
     this.unsubscribers.push(auditUnsub);
 
-    // 7. Checksheet Templates Listener
+    // 7. Checksheet Templates Realtime Listener
     const tplUnsub = onSnapshot(
       collection(firestoreDb, 'checksheetTemplates'),
       (snapshot) => {
@@ -272,7 +236,7 @@ class FirestoreDataStore {
     );
     this.unsubscribers.push(tplUnsub);
 
-    // 8. System Configs Listener
+    // 8. System Configs Realtime Listener
     const cfgUnsub = onSnapshot(
       collection(firestoreDb, 'systemConfigs'),
       (snapshot) => {
@@ -293,7 +257,7 @@ class FirestoreDataStore {
   }
 
   /**
-   * Seeds initial data into Firestore if empty on boot
+   * Seeds initial data into Firestore if empty on boot without overwriting existing records.
    */
   private async seedInitialData() {
     if (this.hasSeeded) return;
@@ -303,24 +267,28 @@ class FirestoreDataStore {
       const batch = writeBatch(firestoreDb);
 
       for (const jo of INITIAL_JOB_ORDERS.slice(0, 5)) {
-        batch.set(doc(firestoreDb, 'jobOrders', jo.id), jo);
+        batch.set(doc(firestoreDb, 'jobOrders', jo.id), {
+          ...jo,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        }, { merge: true });
       }
 
       for (const ws of INITIAL_WORKSTATIONS) {
-        batch.set(doc(firestoreDb, 'workstations', ws.id), ws);
+        batch.set(doc(firestoreDb, 'workstations', ws.id), ws, { merge: true });
       }
 
       for (const [key, tpl] of Object.entries(INITIAL_CHECKSHEET_TEMPLATES)) {
-        batch.set(doc(firestoreDb, 'checksheetTemplates', sanitizeDocId(key)), tpl);
+        batch.set(doc(firestoreDb, 'checksheetTemplates', sanitizeDocId(key)), tpl, { merge: true });
       }
 
-      batch.set(doc(firestoreDb, 'systemConfigs', 'calendar'), INITIAL_WORKING_CALENDAR);
-      batch.set(doc(firestoreDb, 'systemConfigs', 'aiWeights'), DEFAULT_AI_WEIGHTS);
+      batch.set(doc(firestoreDb, 'systemConfigs', 'calendar'), INITIAL_WORKING_CALENDAR, { merge: true });
+      batch.set(doc(firestoreDb, 'systemConfigs', 'aiWeights'), DEFAULT_AI_WEIGHTS, { merge: true });
 
       await batch.commit();
       console.log('Seeded initial Firestore operational data successfully');
     } catch (e) {
-      console.warn('Initial seeding note (quota or pending):', e);
+      this.handleCloudError(e, 'seedInitialData');
     }
   }
 
@@ -356,21 +324,23 @@ class FirestoreDataStore {
     };
 
     this.auditEvents.unshift(event);
-    this.savePersistentCache();
+    this.notify();
 
-    try {
-      await setDoc(doc(firestoreDb, 'auditEvents', eventId), event);
-    } catch (e) {
-      // Non-fatal if cloud write is throttled
+    if (!this.isQuotaExhausted) {
+      try {
+        await setDoc(doc(firestoreDb, 'auditEvents', eventId), {
+          ...event,
+          timestamp: serverTimestamp()
+        });
+      } catch (e) {
+        this.handleCloudError(e, 'logAudit');
+      }
     }
   }
 
   // --- QUERY APIS ---
 
   public getJobOrders(): JobOrder[] {
-    if (this.jobOrders.length === 0) {
-      return [...INITIAL_JOB_ORDERS];
-    }
     return [...this.jobOrders];
   }
 
@@ -379,9 +349,6 @@ class FirestoreDataStore {
   }
 
   public getWorkstations(): Workstation[] {
-    if (this.workstations.length === 0) {
-      return [...INITIAL_WORKSTATIONS];
-    }
     return [...this.workstations];
   }
 
@@ -417,9 +384,6 @@ class FirestoreDataStore {
   }
 
   public getChecksheetTemplates(): Record<string, ChecksheetTemplate> {
-    if (Object.keys(this.checksheetTemplates).length === 0) {
-      return { ...INITIAL_CHECKSHEET_TEMPLATES };
-    }
     return { ...this.checksheetTemplates };
   }
 
@@ -441,11 +405,11 @@ class FirestoreDataStore {
     return { ...this.aiWeights };
   }
 
-  // --- ATOMIC MUTATION TRANSACTIONS ---
+  // --- ATOMIC MUTATION TRANSACTIONS WITH CLOUD FIRESTORE ---
 
   /**
-   * TASK 2: Atomic Server-Validated JO Receiving Transaction
-   * Prevents duplicate JO submissions across multiple devices.
+   * TASK 2 & 4: Atomic Server-Validated JO Receiving Transaction
+   * Prevents duplicate JO submissions across multiple devices using Firestore transactions.
    */
   public async receiveJobOrder(
     data: {
@@ -462,8 +426,8 @@ class FirestoreDataStore {
       return { success: false, error: 'Tidak dapat mendaftarkan JO saat offline. Periksa koneksi internet.' };
     }
 
+    await ensureAuthenticated();
     const cleanJoNum = data.joNumber.trim();
-    // Unique check across existing database records
     if (this.jobOrders.some((j) => j.joNumber.toLowerCase() === cleanJoNum.toLowerCase())) {
       return { success: false, error: `Job Order number ${cleanJoNum} already exists in database.` };
     }
@@ -492,7 +456,6 @@ class FirestoreDataStore {
       updatedAt: now
     };
 
-    // Try cloud Firestore transaction
     if (!this.isQuotaExhausted) {
       try {
         await runTransaction(firestoreDb, async (transaction) => {
@@ -500,7 +463,11 @@ class FirestoreDataStore {
           if (existingDoc.exists()) {
             throw new Error(`Job Order number ${cleanJoNum} already exists in database.`);
           }
-          transaction.set(joRef, createdJo);
+          transaction.set(joRef, {
+            ...createdJo,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          });
         });
       } catch (error: any) {
         if (error.message && error.message.includes('already exists')) {
@@ -510,9 +477,7 @@ class FirestoreDataStore {
       }
     }
 
-    // Apply update to store and persistent cache
     this.jobOrders.unshift(createdJo);
-    this.savePersistentCache();
     await this.logAudit('RECEIVE_JO', 'JobOrder', createdJo.id, terminalId, 'GLT_OPERATOR', undefined, { ...data });
     this.notify();
 
@@ -520,7 +485,7 @@ class FirestoreDataStore {
   }
 
   /**
-   * TASK 2: Atomic Start GLT Attempt Transaction
+   * TASK 2 & 4: Atomic Start GLT Attempt Transaction
    */
   public async startGltAttempt(
     joId: string,
@@ -530,6 +495,7 @@ class FirestoreDataStore {
       return { success: false, error: 'Tidak dapat memulai pengujian saat offline.' };
     }
 
+    await ensureAuthenticated();
     const jo = this.getJobOrder(joId);
     if (!jo) {
       return { success: false, error: 'Job Order not found in database' };
@@ -563,11 +529,14 @@ class FirestoreDataStore {
     if (!this.isQuotaExhausted) {
       try {
         await runTransaction(firestoreDb, async (transaction) => {
-          transaction.set(attRef, newAttempt);
+          transaction.set(attRef, {
+            ...newAttempt,
+            startedAt: serverTimestamp()
+          });
           transaction.update(joRef, {
             status: 'IN_GLT',
             activeAttemptId: attemptId,
-            updatedAt: now
+            updatedAt: serverTimestamp()
           });
         });
       } catch (e: any) {
@@ -579,7 +548,6 @@ class FirestoreDataStore {
     jo.status = 'IN_GLT';
     jo.activeAttemptId = attemptId;
     jo.updatedAt = now;
-    this.savePersistentCache();
     await this.logAudit('START_GLT', 'TestingAttempt', newAttempt.id, terminalId, 'GLT_OPERATOR');
     this.notify();
 
@@ -587,7 +555,7 @@ class FirestoreDataStore {
   }
 
   /**
-   * TASK 2: Atomic Submit GLT Attempt Transaction
+   * TASK 2 & 4: Atomic Submit GLT Attempt Transaction
    */
   public async submitGltAttempt(
     attemptId: string,
@@ -603,6 +571,7 @@ class FirestoreDataStore {
       return { success: false, error: 'Tidak dapat melakukan Submit saat offline. Pastikan koneksi internet terhubung untuk menjaga integritas data server.' };
     }
 
+    await ensureAuthenticated();
     const attempt = this.attempts.find((a) => a.id === attemptId);
     if (!attempt) return { success: false, error: 'Attempt not found' };
     const jo = this.getJobOrder(attempt.joId);
@@ -612,7 +581,6 @@ class FirestoreDataStore {
     const isGood = payload.overallEvaluation === 'GOOD';
     const mriId = `mri-a-${jo.id}-${Date.now()}`;
 
-    // Cloud transaction attempt
     if (!this.isQuotaExhausted) {
       try {
         const attRef = doc(firestoreDb, 'testingAttempts', attemptId);
@@ -624,7 +592,7 @@ class FirestoreDataStore {
             overallEvaluation: payload.overallEvaluation,
             remarks: payload.remarks || '',
             evidencePhotos: payload.evidencePhotos || [],
-            endedAt: now,
+            endedAt: serverTimestamp(),
             result: payload.overallEvaluation
           });
 
@@ -632,9 +600,9 @@ class FirestoreDataStore {
             transaction.update(joRef, {
               status: 'READY_FOR_ALLOCATION',
               finalGltResult: 'GOOD',
-              gltCompletedAt: now,
+              gltCompletedAt: serverTimestamp(),
               activeAttemptId: null,
-              updatedAt: now
+              updatedAt: serverTimestamp()
             });
           } else {
             const mriRef = doc(firestoreDb, 'mriRecords', mriId);
@@ -657,14 +625,17 @@ class FirestoreDataStore {
               }],
               status: 'OPEN'
             };
-            transaction.set(mriRef, mri);
+            transaction.set(mriRef, {
+              ...mri,
+              createdAt: serverTimestamp()
+            });
             transaction.update(joRef, {
               hasMriA: true,
               latestMriAId: mriId,
               finalGltResult: 'NOT_GOOD',
               status: 'WAITING_GLT',
               activeAttemptId: null,
-              updatedAt: now
+              updatedAt: serverTimestamp()
             });
           }
         });
@@ -673,7 +644,6 @@ class FirestoreDataStore {
       }
     }
 
-    // Apply to local store
     attempt.measurements = payload.measurements;
     attempt.overallEvaluation = payload.overallEvaluation;
     attempt.remarks = payload.remarks;
@@ -715,7 +685,6 @@ class FirestoreDataStore {
     }
     jo.updatedAt = now;
 
-    this.savePersistentCache();
     await this.logAudit('SUBMIT_GLT', 'TestingAttempt', attemptId, terminalId, 'GLT_OPERATOR', undefined, { outcome: payload.overallEvaluation });
     this.notify();
 
@@ -723,7 +692,7 @@ class FirestoreDataStore {
   }
 
   /**
-   * TASK 2: Atomic Supervisor Allocation Transaction
+   * TASK 2 & 4: Atomic Supervisor Allocation Transaction
    */
   public async allocateJobOrder(
     joId: string,
@@ -734,6 +703,7 @@ class FirestoreDataStore {
       return { success: false, error: 'Tidak dapat mengalokasikan saat offline.' };
     }
 
+    await ensureAuthenticated();
     const jo = this.getJobOrder(joId);
     if (!jo) return { success: false, error: 'Job order not found' };
     const ws = this.getWorkstation(workstationId);
@@ -745,7 +715,6 @@ class FirestoreDataStore {
 
     const now = new Date().toISOString();
 
-    // Clean up previous workstation queue if changing allocation
     if (jo.approvedWorkstationId && jo.approvedWorkstationId !== workstationId) {
       const oldWs = this.getWorkstation(jo.approvedWorkstationId);
       if (oldWs) {
@@ -766,7 +735,6 @@ class FirestoreDataStore {
     jo.queueSequence = newQueue.length;
     jo.updatedAt = now;
 
-    // Try Firestore update
     if (!this.isQuotaExhausted) {
       try {
         const joRef = doc(firestoreDb, 'jobOrders', jo.id);
@@ -779,9 +747,9 @@ class FirestoreDataStore {
           transaction.update(joRef, {
             status: 'ALLOCATED',
             approvedWorkstationId: ws.id,
-            allocatedAt: now,
+            allocatedAt: serverTimestamp(),
             queueSequence: newQueue.length,
-            updatedAt: now
+            updatedAt: serverTimestamp()
           });
         });
       } catch (e: any) {
@@ -789,7 +757,6 @@ class FirestoreDataStore {
       }
     }
 
-    this.savePersistentCache();
     await this.logAudit('ALLOCATE_JO', 'JobOrder', joId, terminalId, 'SPV_QC', undefined, { workstationId });
     this.notify();
 
@@ -797,7 +764,7 @@ class FirestoreDataStore {
   }
 
   /**
-   * TASK 2: Atomic Start Performance Test Transaction
+   * TASK 2, 4 & 5: Atomic Start Performance Test Transaction
    * Prevents two devices from testing simultaneously on the same workstation.
    */
   public async startPerformanceAttempt(
@@ -809,6 +776,7 @@ class FirestoreDataStore {
       return { success: false, error: 'Tidak dapat memulai pengujian saat offline.' };
     }
 
+    await ensureAuthenticated();
     const jo = this.getJobOrder(joId);
     if (!jo) return { success: false, error: 'Job order not found' };
 
@@ -823,7 +791,7 @@ class FirestoreDataStore {
       return { success: false, error: `Workstation is ${ws.availabilityState}. Pengujian dilarang.` };
     }
 
-    // Mutual exclusion: Prevent two simultaneous active attempts on workstation
+    // Mutual exclusion: Prevent two simultaneous active attempts on workstation across devices
     if ((ws.activeAttemptId && ws.activeJoId !== jo.id) || ws.operationalState === 'ACTIVE_TESTING') {
       return { success: false, error: `Workstation ${ws.name} sedang dalam pengujian aktif oleh operator lain.` };
     }
@@ -848,7 +816,6 @@ class FirestoreDataStore {
       evidencePhotos: []
     };
 
-    // Try Cloud Firestore transaction
     if (!this.isQuotaExhausted) {
       try {
         const joRef = doc(firestoreDb, 'jobOrders', jo.id);
@@ -856,7 +823,10 @@ class FirestoreDataStore {
         const attRef = doc(firestoreDb, 'testingAttempts', attemptId);
 
         await runTransaction(firestoreDb, async (transaction) => {
-          transaction.set(attRef, newAttempt);
+          transaction.set(attRef, {
+            ...newAttempt,
+            startedAt: serverTimestamp()
+          });
           transaction.update(wsRef, {
             operationalState: 'ACTIVE_TESTING',
             activeJoId: jo.id,
@@ -865,7 +835,7 @@ class FirestoreDataStore {
           transaction.update(joRef, {
             status: 'IN_PERFORMANCE',
             activeAttemptId: attemptId,
-            updatedAt: now
+            updatedAt: serverTimestamp()
           });
         });
       } catch (e: any) {
@@ -882,7 +852,6 @@ class FirestoreDataStore {
     jo.activeAttemptId = attemptId;
     jo.updatedAt = now;
 
-    this.savePersistentCache();
     await this.logAudit('START_PERFORMANCE', 'TestingAttempt', attemptId, terminalId, 'PERF_OPERATOR', undefined, { workstationId });
     this.notify();
 
@@ -890,7 +859,7 @@ class FirestoreDataStore {
   }
 
   /**
-   * TASK 2: Atomic Submit Performance Test Transaction
+   * TASK 2, 4 & 5: Atomic Submit Performance Test Transaction
    */
   public async submitPerformanceAttempt(
     attemptId: string,
@@ -906,6 +875,7 @@ class FirestoreDataStore {
       return { success: false, error: 'Tidak dapat melakukan Submit saat offline. Pastikan koneksi internet terhubung untuk menjaga integritas data server.' };
     }
 
+    await ensureAuthenticated();
     const attempt = this.attempts.find((a) => a.id === attemptId);
     if (!attempt) return { success: false, error: 'Attempt not found' };
     const jo = this.getJobOrder(attempt.joId);
@@ -916,7 +886,6 @@ class FirestoreDataStore {
     const isGood = payload.overallEvaluation === 'GOOD';
     let generatedCert: TestCertificate | undefined;
 
-    // Apply outcome
     attempt.measurements = payload.measurements;
     attempt.overallEvaluation = payload.overallEvaluation;
     attempt.remarks = payload.remarks;
@@ -977,7 +946,6 @@ class FirestoreDataStore {
     }
     jo.updatedAt = now;
 
-    // Try Firestore update
     if (!this.isQuotaExhausted) {
       try {
         const attRef = doc(firestoreDb, 'testingAttempts', attemptId);
@@ -990,13 +958,16 @@ class FirestoreDataStore {
             overallEvaluation: payload.overallEvaluation,
             remarks: payload.remarks || '',
             evidencePhotos: payload.evidencePhotos || [],
-            endedAt: now,
+            endedAt: serverTimestamp(),
             result: payload.overallEvaluation
           });
 
           if (isGood && generatedCert) {
             const certRef = doc(firestoreDb, 'certificates', `cert-${jo.id}`);
-            transaction.set(certRef, generatedCert);
+            transaction.set(certRef, {
+              ...generatedCert,
+              issuedAt: serverTimestamp()
+            });
 
             if (wsRef && ws) {
               transaction.update(wsRef, {
@@ -1010,10 +981,10 @@ class FirestoreDataStore {
             transaction.update(joRef, {
               status: 'DONE',
               finalPerformanceResult: 'GOOD',
-              performanceCompletedAt: now,
+              performanceCompletedAt: serverTimestamp(),
               certificateId: generatedCert.certificateNumber,
               activeAttemptId: null,
-              updatedAt: now
+              updatedAt: serverTimestamp()
             });
           }
         });
@@ -1022,7 +993,6 @@ class FirestoreDataStore {
       }
     }
 
-    this.savePersistentCache();
     await this.logAudit('SUBMIT_PERFORMANCE', 'TestingAttempt', attemptId, terminalId, 'PERF_OPERATOR', undefined, { outcome: payload.overallEvaluation });
     this.notify();
 
@@ -1039,6 +1009,7 @@ class FirestoreDataStore {
   ): Promise<{ success: boolean; error?: string }> {
     if (!reason?.trim()) return { success: false, error: 'Mandatory reason required for Supervisor Abort' };
 
+    await ensureAuthenticated();
     const attempt = this.attempts.find((a) => a.id === attemptId);
     if (!attempt) return { success: false, error: 'Attempt not found' };
     const jo = this.getJobOrder(attempt.joId);
@@ -1067,14 +1038,13 @@ class FirestoreDataStore {
     try {
       const attRef = doc(firestoreDb, 'testingAttempts', attemptId);
       await updateDoc(attRef, {
-        endedAt: now,
+        endedAt: serverTimestamp(),
         result: 'ABORTED',
         abortReason: reason.trim(),
         abortedByRole: 'SPV_QC'
       });
     } catch (e) {}
 
-    this.savePersistentCache();
     await this.logAudit('ABORT_PERFORMANCE_ATTEMPT', 'TestingAttempt', attemptId, terminalId, 'SPV_QC', reason);
     this.notify();
 
@@ -1112,6 +1082,7 @@ class FirestoreDataStore {
     terminalId: string,
     role: string
   ): Promise<{ success: boolean; error?: string }> {
+    await ensureAuthenticated();
     const mri = this.mriRecords.find((m) => m.id === mriId);
     if (mri) {
       mri.generalCorrectiveAction = correctiveActionRemark.trim();
@@ -1122,12 +1093,11 @@ class FirestoreDataStore {
     try {
       await updateDoc(doc(firestoreDb, 'mriRecords', mriId), {
         generalCorrectiveAction: correctiveActionRemark.trim(),
-        correctiveActionCompletedAt: new Date().toISOString(),
+        correctiveActionCompletedAt: serverTimestamp(),
         status: 'RESOLVED'
       });
     } catch (e) {}
 
-    this.savePersistentCache();
     await this.logAudit('RECORD_CORRECTIVE_ACTION', 'MriRecord', mriId, terminalId, role, correctiveActionRemark);
     this.notify();
 
@@ -1147,6 +1117,7 @@ class FirestoreDataStore {
       return { success: false, error: 'Reason is mandatory for Breakdown or Maintenance' };
     }
 
+    await ensureAuthenticated();
     const ws = this.getWorkstation(workstationId);
     if (ws) {
       ws.availabilityState = state;
@@ -1160,7 +1131,6 @@ class FirestoreDataStore {
       });
     } catch (e) {}
 
-    this.savePersistentCache();
     await this.logAudit('SET_WORKSTATION_AVAILABILITY', 'Workstation', workstationId, terminalId, 'SPV_QC', reason, { newState: state });
     this.notify();
 
@@ -1175,6 +1145,7 @@ class FirestoreDataStore {
     newQueueJoIds: string[],
     terminalId: string
   ): Promise<void> {
+    await ensureAuthenticated();
     const ws = this.getWorkstation(workstationId);
     if (ws) {
       ws.currentQueue = newQueueJoIds;
@@ -1184,7 +1155,6 @@ class FirestoreDataStore {
       await updateDoc(doc(firestoreDb, 'workstations', workstationId), { currentQueue: newQueueJoIds });
     } catch (e) {}
 
-    this.savePersistentCache();
     await this.logAudit('REORDER_QUEUE', 'Workstation', workstationId, terminalId, 'SPV_QC', undefined, { newQueue: newQueueJoIds });
     this.notify();
   }
@@ -1200,6 +1170,7 @@ class FirestoreDataStore {
   ): Promise<{ success: boolean; error?: string }> {
     if (!reason?.trim()) return { success: false, error: 'Mandatory reason required to Reopen Job Order' };
 
+    await ensureAuthenticated();
     const jo = this.getJobOrder(joId);
     if (!jo) return { success: false, error: 'Job order not found' };
 
@@ -1225,7 +1196,6 @@ class FirestoreDataStore {
       jo.updatedAt = now;
     }
 
-    this.savePersistentCache();
     await this.logAudit('REOPEN_JO', 'JobOrder', joId, terminalId, 'SPV_QC', reason, { restartStage });
     this.notify();
 
@@ -1242,6 +1212,7 @@ class FirestoreDataStore {
   ): Promise<{ success: boolean; error?: string }> {
     if (!reason?.trim()) return { success: false, error: 'Mandatory cancellation reason required' };
 
+    await ensureAuthenticated();
     const jo = this.getJobOrder(joId);
     if (!jo) return { success: false, error: 'Job order not found' };
 
@@ -1252,7 +1223,6 @@ class FirestoreDataStore {
     jo.status = 'CANCELLED';
     jo.updatedAt = new Date().toISOString();
 
-    this.savePersistentCache();
     await this.logAudit('CANCEL_JO', 'JobOrder', joId, terminalId, 'SPV_QC', reason);
     this.notify();
 
@@ -1266,6 +1236,7 @@ class FirestoreDataStore {
     template: ChecksheetTemplate,
     terminalId: string
   ): Promise<void> {
+    await ensureAuthenticated();
     template.version += 1;
     template.publishedAt = new Date().toISOString();
     template.isPublished = true;
@@ -1274,7 +1245,10 @@ class FirestoreDataStore {
     this.checksheetTemplates[safeKey] = template;
 
     try {
-      await setDoc(doc(firestoreDb, 'checksheetTemplates', safeKey), template);
+      await setDoc(doc(firestoreDb, 'checksheetTemplates', safeKey), {
+        ...template,
+        publishedAt: serverTimestamp()
+      });
     } catch (e) {}
 
     await this.logAudit('PUBLISH_CHECKSHEET_VERSION', 'ChecksheetTemplate', template.id, terminalId, 'QUALITY_MASTER', undefined, { version: template.version });
@@ -1285,6 +1259,7 @@ class FirestoreDataStore {
    * Update AI Weights Configuration
    */
   public async updateAiWeights(weights: AiDispatchWeights, terminalId: string): Promise<void> {
+    await ensureAuthenticated();
     this.aiWeights = weights;
     try {
       await setDoc(doc(firestoreDb, 'systemConfigs', 'aiWeights'), weights);
@@ -1297,6 +1272,7 @@ class FirestoreDataStore {
    * Update Working Calendar Configuration
    */
   public async updateWorkingCalendar(calendar: WorkingCalendarConfig, terminalId: string): Promise<void> {
+    await ensureAuthenticated();
     this.workingCalendar = calendar;
     try {
       await setDoc(doc(firestoreDb, 'systemConfigs', 'calendar'), calendar);
@@ -1305,7 +1281,7 @@ class FirestoreDataStore {
     this.notify();
   }
 
-  // --- LOCAL DRAFT AUTOSAVE APIS (TASK 3) ---
+  // --- LOCAL DRAFT AUTOSAVE APIS (RULE 7: localStorage ONLY for temporary offline drafts) ---
   public saveDraft(key: string, data: any) {
     this.draftStore[key] = { data, savedAt: Date.now() };
     try {
