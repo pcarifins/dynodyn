@@ -60,6 +60,9 @@ class FirestoreDataStore {
   private checksheetTemplates: Record<string, ChecksheetTemplate> = { ...INITIAL_CHECKSHEET_TEMPLATES };
   private workingCalendar: WorkingCalendarConfig = INITIAL_WORKING_CALENDAR;
   private aiWeights: AiDispatchWeights = DEFAULT_AI_WEIGHTS;
+  private assemblers: { name: string; active: boolean }[] = [
+    'Budi', 'Andi', 'Rina', 'Joko', 'Agus', 'Yanto', 'Rian Pratama', 'Budi Santoso'
+  ].map((name) => ({ name, active: true }));
 
   private listeners: Set<() => void> = new Set();
   private isInitialized = false;
@@ -245,6 +248,11 @@ class FirestoreDataStore {
             this.workingCalendar = docSnap.data() as WorkingCalendarConfig;
           } else if (docSnap.id === 'aiWeights') {
             this.aiWeights = docSnap.data() as AiDispatchWeights;
+          } else if (docSnap.id === 'assemblers') {
+            const data = docSnap.data();
+            if (data && data.list) {
+              this.assemblers = data.list;
+            }
           }
         });
         this.notify();
@@ -284,6 +292,7 @@ class FirestoreDataStore {
 
       batch.set(doc(firestoreDb, 'systemConfigs', 'calendar'), INITIAL_WORKING_CALENDAR, { merge: true });
       batch.set(doc(firestoreDb, 'systemConfigs', 'aiWeights'), DEFAULT_AI_WEIGHTS, { merge: true });
+      batch.set(doc(firestoreDb, 'systemConfigs', 'assemblers'), { list: this.assemblers }, { merge: true });
 
       await batch.commit();
       console.log('Seeded initial Firestore operational data successfully');
@@ -1035,15 +1044,19 @@ class FirestoreDataStore {
       }
     }
 
-    try {
-      const attRef = doc(firestoreDb, 'testingAttempts', attemptId);
-      await updateDoc(attRef, {
-        endedAt: serverTimestamp(),
-        result: 'ABORTED',
-        abortReason: reason.trim(),
-        abortedByRole: 'SPV_QC'
-      });
-    } catch (e) {}
+    if (!this.isQuotaExhausted) {
+      try {
+        const attRef = doc(firestoreDb, 'testingAttempts', attemptId);
+        await updateDoc(attRef, {
+          endedAt: serverTimestamp(),
+          result: 'ABORTED',
+          abortReason: reason.trim(),
+          abortedByRole: 'SPV_QC'
+        });
+      } catch (e) {
+        this.handleCloudError(e, 'abortPerformanceAttempt');
+      }
+    }
 
     await this.logAudit('ABORT_PERFORMANCE_ATTEMPT', 'TestingAttempt', attemptId, terminalId, 'SPV_QC', reason);
     this.notify();
@@ -1090,13 +1103,17 @@ class FirestoreDataStore {
       mri.status = 'RESOLVED';
     }
 
-    try {
-      await updateDoc(doc(firestoreDb, 'mriRecords', mriId), {
-        generalCorrectiveAction: correctiveActionRemark.trim(),
-        correctiveActionCompletedAt: serverTimestamp(),
-        status: 'RESOLVED'
-      });
-    } catch (e) {}
+    if (!this.isQuotaExhausted) {
+      try {
+        await updateDoc(doc(firestoreDb, 'mriRecords', mriId), {
+          generalCorrectiveAction: correctiveActionRemark.trim(),
+          correctiveActionCompletedAt: serverTimestamp(),
+          status: 'RESOLVED'
+        });
+      } catch (e) {
+        this.handleCloudError(e, 'recordCorrectiveAction');
+      }
+    }
 
     await this.logAudit('RECORD_CORRECTIVE_ACTION', 'MriRecord', mriId, terminalId, role, correctiveActionRemark);
     this.notify();
@@ -1124,12 +1141,16 @@ class FirestoreDataStore {
       ws.breakdownReason = state === 'ENABLED' ? undefined : reason?.trim();
     }
 
-    try {
-      await updateDoc(doc(firestoreDb, 'workstations', workstationId), {
-        availabilityState: state,
-        breakdownReason: state === 'ENABLED' ? '' : reason?.trim()
-      });
-    } catch (e) {}
+    if (!this.isQuotaExhausted) {
+      try {
+        await updateDoc(doc(firestoreDb, 'workstations', workstationId), {
+          availabilityState: state,
+          breakdownReason: state === 'ENABLED' ? '' : reason?.trim()
+        });
+      } catch (e) {
+        this.handleCloudError(e, 'setWorkstationAvailability');
+      }
+    }
 
     await this.logAudit('SET_WORKSTATION_AVAILABILITY', 'Workstation', workstationId, terminalId, 'SPV_QC', reason, { newState: state });
     this.notify();
@@ -1151,9 +1172,13 @@ class FirestoreDataStore {
       ws.currentQueue = newQueueJoIds;
     }
 
-    try {
-      await updateDoc(doc(firestoreDb, 'workstations', workstationId), { currentQueue: newQueueJoIds });
-    } catch (e) {}
+    if (!this.isQuotaExhausted) {
+      try {
+        await updateDoc(doc(firestoreDb, 'workstations', workstationId), { currentQueue: newQueueJoIds });
+      } catch (e) {
+        this.handleCloudError(e, 'reorderWorkstationQueue');
+      }
+    }
 
     await this.logAudit('REORDER_QUEUE', 'Workstation', workstationId, terminalId, 'SPV_QC', undefined, { newQueue: newQueueJoIds });
     this.notify();
@@ -1196,6 +1221,21 @@ class FirestoreDataStore {
       jo.updatedAt = now;
     }
 
+    if (!this.isQuotaExhausted) {
+      try {
+        await updateDoc(doc(firestoreDb, 'jobOrders', joId), {
+          status: jo.status,
+          currentCycleId: jo.currentCycleId,
+          finalGltResult: jo.finalGltResult || null,
+          approvedWorkstationId: null,
+          queueSequence: null,
+          updatedAt: serverTimestamp()
+        });
+      } catch (e) {
+        this.handleCloudError(e, 'reopenJobOrder');
+      }
+    }
+
     await this.logAudit('REOPEN_JO', 'JobOrder', joId, terminalId, 'SPV_QC', reason, { restartStage });
     this.notify();
 
@@ -1223,6 +1263,17 @@ class FirestoreDataStore {
     jo.status = 'CANCELLED';
     jo.updatedAt = new Date().toISOString();
 
+    if (!this.isQuotaExhausted) {
+      try {
+        await updateDoc(doc(firestoreDb, 'jobOrders', joId), {
+          status: 'CANCELLED',
+          updatedAt: serverTimestamp()
+        });
+      } catch (e) {
+        this.handleCloudError(e, 'cancelJobOrder');
+      }
+    }
+
     await this.logAudit('CANCEL_JO', 'JobOrder', joId, terminalId, 'SPV_QC', reason);
     this.notify();
 
@@ -1244,12 +1295,16 @@ class FirestoreDataStore {
     const safeKey = sanitizeDocId(`PERF_${template.componentCategory}`);
     this.checksheetTemplates[safeKey] = template;
 
-    try {
-      await setDoc(doc(firestoreDb, 'checksheetTemplates', safeKey), {
-        ...template,
-        publishedAt: serverTimestamp()
-      });
-    } catch (e) {}
+    if (!this.isQuotaExhausted) {
+      try {
+        await setDoc(doc(firestoreDb, 'checksheetTemplates', safeKey), {
+          ...template,
+          publishedAt: serverTimestamp()
+        });
+      } catch (e) {
+        this.handleCloudError(e, 'publishChecksheetTemplate');
+      }
+    }
 
     await this.logAudit('PUBLISH_CHECKSHEET_VERSION', 'ChecksheetTemplate', template.id, terminalId, 'QUALITY_MASTER', undefined, { version: template.version });
     this.notify();
@@ -1261,9 +1316,13 @@ class FirestoreDataStore {
   public async updateAiWeights(weights: AiDispatchWeights, terminalId: string): Promise<void> {
     await ensureAuthenticated();
     this.aiWeights = weights;
-    try {
-      await setDoc(doc(firestoreDb, 'systemConfigs', 'aiWeights'), weights);
-    } catch (e) {}
+    if (!this.isQuotaExhausted) {
+      try {
+        await setDoc(doc(firestoreDb, 'systemConfigs', 'aiWeights'), weights);
+      } catch (e) {
+        this.handleCloudError(e, 'updateAiWeights');
+      }
+    }
     await this.logAudit('UPDATE_AI_WEIGHTS', 'AiDispatchConfig', 'weights', terminalId, 'SPV_QC', undefined, { ...weights });
     this.notify();
   }
@@ -1274,10 +1333,37 @@ class FirestoreDataStore {
   public async updateWorkingCalendar(calendar: WorkingCalendarConfig, terminalId: string): Promise<void> {
     await ensureAuthenticated();
     this.workingCalendar = calendar;
-    try {
-      await setDoc(doc(firestoreDb, 'systemConfigs', 'calendar'), calendar);
-    } catch (e) {}
+    if (!this.isQuotaExhausted) {
+      try {
+        await setDoc(doc(firestoreDb, 'systemConfigs', 'calendar'), calendar);
+      } catch (e) {
+        this.handleCloudError(e, 'updateWorkingCalendar');
+      }
+    }
     await this.logAudit('UPDATE_WORKING_CALENDAR', 'WorkingCalendar', 'calendar', terminalId, 'SPV_QC', undefined, { ...calendar });
+    this.notify();
+  }
+
+  // --- ASSEMBLER MANAGEMENT (PRIORITY 2) ---
+  public getAssemblers(): { name: string; active: boolean }[] {
+    return [...this.assemblers];
+  }
+
+  public getAssemblerNames(): string[] {
+    return this.assemblers.filter((a) => a.active).map((a) => a.name);
+  }
+
+  public async saveAssemblers(list: { name: string; active: boolean }[], terminalId: string): Promise<void> {
+    await ensureAuthenticated();
+    this.assemblers = list;
+    if (!this.isQuotaExhausted) {
+      try {
+        await setDoc(doc(firestoreDb, 'systemConfigs', 'assemblers'), { list }, { merge: true });
+      } catch (e) {
+        this.handleCloudError(e, 'saveAssemblers');
+      }
+    }
+    await this.logAudit('UPDATE_ASSEMBLERS', 'SystemConfig', 'assemblers', terminalId, 'QUALITY_MASTER', undefined, { count: list.length });
     this.notify();
   }
 

@@ -34,6 +34,18 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenFullscreen,
   unreadCount = 1
 }) => {
+  const [isOnline, setIsOnline] = React.useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+
+  React.useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
   return (
     <header className="bg-white border-b border-gray-200 sticky top-0 z-30 px-6 py-2.5 flex items-center justify-between shadow-xs">
       {/* Brand & Tabs */}
@@ -228,6 +240,12 @@ export const Header: React.FC<HeaderProps> = ({
           <Tv className="w-4 h-4" />
           <span className="hidden sm:inline">16:9 Monitor</span>
         </button>
+
+        {/* Connection Status Indicator */}
+        <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+          <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`}></span>
+          <span>{isOnline ? 'Cloud Synced' : 'Offline Draft Mode'}</span>
+        </div>
 
         {/* Notification Bell */}
         <div className="relative cursor-pointer p-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-full transition-colors">

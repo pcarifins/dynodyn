@@ -36,14 +36,25 @@ export const ReceiveJoModal: React.FC<ReceiveJoModalProps> = ({
   terminalId,
   defaultCategory = 'Power Train'
 }) => {
+  const [assemblersList, setAssemblersList] = React.useState<string[]>(() => db.getAssemblerNames());
   const [joNumber, setJoNumber] = useState(`241000${Math.floor(7300 + Math.random() * 500)}`);
   const [componentCategory, setComponentCategory] = useState<ComponentCategory>(defaultCategory);
   const [componentModel, setComponentModel] = useState('');
   const [unitModel, setUnitModel] = useState('');
-  const [assembler, setAssembler] = useState(COMMON_ASSEMBLERS[0]);
+  const [assembler, setAssembler] = useState(assemblersList[0] || 'Budi');
   const [assemblyDate, setAssemblyDate] = useState(new Date().toISOString().slice(0, 16));
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  React.useEffect(() => {
+    return db.subscribe(() => {
+      const list = db.getAssemblerNames();
+      setAssemblersList(list);
+      if (list.length > 0 && !list.includes(assembler)) {
+        setAssembler(list[0]);
+      }
+    });
+  }, [assembler]);
 
   if (!isOpen) return null;
 
@@ -160,7 +171,7 @@ export const ReceiveJoModal: React.FC<ReceiveJoModalProps> = ({
                 onChange={(e) => setAssembler(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-slate-900"
               >
-                {COMMON_ASSEMBLERS.map((a) => (
+                {assemblersList.map((a) => (
                   <option key={a} value={a}>
                     {a}
                   </option>
